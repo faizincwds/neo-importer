@@ -1,0 +1,793 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neo Feeder Importer v3.1</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        primary: { 50:'#eff6ff',100:'#dbeafe',200:'#bfdbfe',300:'#93c5fd',400:'#60a5fa',500:'#3b82f6',600:'#2563eb',700:'#1d4ed8',800:'#1e40af',900:'#1e3a8a',950:'#172554' },
+                        surface: { 50:'#f8fafc',100:'#f1f5f9',200:'#e2e8f0',300:'#cbd5e1',400:'#94a3b8',500:'#64748b',600:'#475569',700:'#334155',800:'#1e293b',900:'#0f172a',950:'#020617' }
+                    }
+                }
+            }
+        }
+    </script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        /* ── Variabel ── */
+        :root {
+            --sidebar-w: 256px;
+            --header-h: 56px;
+            --log-h: 200px;
+            --radius: 12px;
+            --radius-sm: 8px;
+        }
+
+        /* ── Reset & Base ── */
+        *, *::before, *::after { box-sizing: border-box; }
+        body { font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; -webkit-tap-highlight-color: transparent; }
+        input, select, button, label { font-family: inherit; }
+        input:focus, select:focus { outline: none; box-shadow: 0 0 0 2px rgba(37,99,235,.35); border-color: #2563eb; }
+
+        /* ── Sidebar Toggle (CSS-only: checkbox hack) ── */
+        #sidebarToggle { display: none; }
+
+        /* Overlay saat sidebar terbuka di mobile */
+        #sidebarOverlay {
+            display: none; position: fixed; inset: 0; z-index: 35;
+            background: rgba(0,0,0,.4); backdrop-filter: blur(2px);
+        }
+
+        /* ── Sidebar ── */
+        .sidebar {
+            width: var(--sidebar-w); height: 100%;
+            position: fixed; left: 0; top: 0; z-index: 40;
+            background: white; border-right: 1px solid #e2e8f0;
+            display: flex; flex-direction: column;
+            transition: transform .3s cubic-bezier(.4,0,.2,1);
+        }
+        .dark .sidebar { background: #1e293b; border-color: #334155; }
+
+        /* Desktop: selalu terlihat */
+        @media (min-width: 1024px) {
+            .sidebar { transform: translateX(0) !important; }
+            #sidebarOverlay { display: none !important; }
+            #sidebarToggle { display: none !important; }
+        }
+
+        /* Mobile: tersembunyi, muncul saat checkbox :checked */
+        @media (max-width: 1023px) {
+            .sidebar { transform: translateX(-100%); }
+            .sidebar-open .sidebar { transform: translateX(0); }
+            .sidebar-open #sidebarOverlay { display: block; }
+        }
+
+        /* ── Main Content ── */
+        .main-area {
+            min-height: 100vh; display: flex; flex-direction: column;
+            transition: margin-left .3s cubic-bezier(.4,0,.2,1);
+        }
+        @media (min-width: 1024px) {
+            .main-area { margin-left: var(--sidebar-w); }
+        }
+
+        /* ── Header ── */
+        .app-header {
+            height: var(--header-h); position: sticky; top: 0; z-index: 30;
+            background: rgba(255,255,255,.82); backdrop-filter: blur(12px);
+            border-bottom: 1px solid #e2e8f0;
+            display: flex; align-items: center; padding: 0 16px; gap: 12px;
+        }
+        .dark .app-header { background: rgba(30,41,59,.82); border-color: #334155; }
+
+        .hamburger {
+            display: flex; align-items: center; justify-content: center;
+            width: 40px; height: 40px; border-radius: var(--radius-sm);
+            border: none; background: transparent; cursor: pointer;
+            color: #334155; font-size: 18px;
+            transition: background .15s;
+        }
+        .hamburger:hover { background: #f1f5f9; }
+        .dark .hamburger { color: #cbd5e1; }
+        .dark .hamburger:hover { background: #334155; }
+        @media (min-width: 1024px) { .hamburger { display: none; } }
+
+        /* ── Nav Items ── */
+        .nav-item {
+            display: flex; align-items: center; gap: 12px;
+            padding: 10px 12px; border-radius: var(--radius-sm);
+            text-decoration: none; color: #475569; font-size: 14px;
+            cursor: pointer; transition: all .15s; user-select: none;
+            border: 1px solid transparent;
+        }
+        .nav-item:hover { background: #eff6ff; color: #1e40af; }
+        .dark .nav-item:hover { background: rgba(37,99,235,.08); color: #93c5fd; }
+        .nav-item.active {
+            background: #eff6ff; color: #1d4ed8; font-weight: 500;
+            border-color: rgba(37,99,235,.15);
+        }
+        .dark .nav-item.active { background: rgba(37,99,235,.12); color: #60a5fa; border-color: rgba(37,99,235,.2); }
+        .nav-item i { width: 20px; text-align: center; font-size: 15px; flex-shrink: 0; }
+
+        /* ── Cards ── */
+        .card {
+            background: white; border: 1px solid #e2e8f0;
+            border-radius: var(--radius); padding: 20px;
+            transition: transform .2s, box-shadow .2s;
+        }
+        .dark .card { background: #1e293b; border-color: #334155; }
+        .card-hover:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,.06); }
+        .dark .card-hover:hover { box-shadow: 0 8px 24px rgba(0,0,0,.25); }
+
+        /* ── Stat Card ── */
+        .stat-label { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: #94a3b8; font-weight: 500; }
+        .stat-value { font-size: 28px; font-weight: 700; margin-top: 4px; line-height: 1.1; }
+        .stat-sub { font-size: 11px; color: #94a3b8; margin-top: 4px; }
+        @media (max-width: 640px) { .stat-value { font-size: 24px; } }
+
+        /* ── Form ── */
+        .form-label { display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px; color: #334155; }
+        .dark .form-label { color: #cbd5e1; }
+        .form-input {
+            width: 100%; padding: 10px 14px; border: 1px solid #e2e8f0;
+            border-radius: var(--radius-sm); font-size: 14px;
+            background: white; color: #0f172a; transition: border-color .15s, box-shadow .15s;
+        }
+        .dark .form-input { background: #0f172a; border-color: #334155; color: #e2e8f0; }
+        .form-hint { font-size: 11px; color: #94a3b8; margin-top: 4px; }
+
+        /* ── Buttons ── */
+        .btn {
+            display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+            padding: 10px 20px; border-radius: var(--radius-sm); font-size: 14px; font-weight: 500;
+            border: none; cursor: pointer; transition: all .15s; white-space: nowrap;
+            min-height: 42px;
+        }
+        .btn-primary { background: #2563eb; color: white; }
+        .btn-primary:hover { background: #1d4ed8; }
+        .btn-success { background: #059669; color: white; }
+        .btn-success:hover { background: #047857; }
+        .btn-danger { background: #ef4444; color: white; }
+        .btn-danger:hover { background: #dc2626; }
+        .btn-purple { background: #7c3aed; color: white; }
+        .btn-purple:hover { background: #6d28d9; }
+        .btn-amber { background: #d97706; color: white; }
+        .btn-amber:hover { background: #b45309; }
+        .btn-ghost {
+            background: transparent; color: #475569; border: 1px solid #e2e8f0;
+        }
+        .btn-ghost:hover { background: #f8fafc; }
+        .dark .btn-ghost { color: #cbd5e1; border-color: #334155; }
+        .dark .btn-ghost:hover { background: #334155; }
+        .btn:disabled { opacity: .45; pointer-events: none; }
+
+        /* ── Drop Zone ── */
+        .drop-zone {
+            border: 2px dashed #cbd5e1; border-radius: var(--radius);
+            padding: 40px 20px; text-align: center; cursor: pointer;
+            transition: all .2s;
+        }
+        .drop-zone:hover { border-color: #3b82f6; background: #eff6ff; }
+        .dark .drop-zone { border-color: #475569; }
+        .dark .drop-zone:hover { border-color: #3b82f6; background: rgba(37,99,235,.06); }
+        @media (max-width: 640px) { .drop-zone { padding: 28px 16px; } }
+
+        /* ── Log Console ── */
+        .log-console {
+            font-family: 'Courier New', Courier, monospace; font-size: 11px;
+            background: #0f172a; color: #e2e8f0;
+        }
+        .log-entry { border-left: 3px solid transparent; padding: 3px 10px; }
+        .log-info { border-left-color: #60a5fa; color: #93c5fd; }
+        .log-success { border-left-color: #34d399; color: #6ee7b7; }
+        .log-error { border-left-color: #f87171; color: #fca5a5; background: rgba(248,113,113,.04); }
+        .log-warn { border-left-color: #fbbf24; color: #fde68a; }
+        .log-req { border-left-color: #a78bfa; color: #c4b5fd; }
+        .log-res { border-left-color: #2dd4bf; color: #99f6e4; }
+
+        /* ── Log Panel ── */
+        .log-panel {
+            border-top: 1px solid #e2e8f0; background: white;
+            display: flex; flex-direction: column;
+        }
+        .dark .log-panel { border-top-color: #334155; background: #1e293b; }
+
+        .log-panel-header {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 8px 16px; border-bottom: 1px solid #e2e8f0;
+            background: #f8fafc; cursor: pointer; user-select: none;
+            min-height: 36px;
+        }
+        .dark .log-panel-header { border-bottom-color: #334155; background: #334155; }
+
+        /* Log panel collapse (CSS-only) */
+        #logToggle { display: none; }
+        .log-panel-body {
+            overflow-y: auto; flex: 1;
+            transition: max-height .3s ease, opacity .3s ease;
+            max-height: 300px; opacity: 1;
+        }
+        #logToggle:checked ~ .main-area .log-panel .log-panel-body,
+        .log-collapsed .log-panel-body {
+            max-height: 0; opacity: 0; overflow: hidden;
+        }
+        #logToggle:checked ~ .main-area .log-panel .log-chevron,
+        .log-collapsed .log-chevron { transform: rotate(180deg); }
+
+        /* ── Progress Bar ── */
+        .progress-track {
+            width: 100%; height: 14px; border-radius: 999px;
+            background: #e2e8f0; overflow: hidden;
+        }
+        .dark .progress-track { background: #334155; }
+        .progress-fill {
+            height: 100%; border-radius: 999px; background: #2563eb;
+            transition: width .3s ease; display: flex; align-items: center;
+            justify-content: center; color: white; font-size: 10px; font-weight: 600;
+            min-width: 0;
+        }
+
+        /* ── Path Badges ── */
+        .badge { font-size: 10px; padding: 2px 7px; border-radius: 4px; font-weight: 600; letter-spacing: .3px; display: inline-block; line-height: 1.4; }
+        .badge-insert { background: #dcfce7; color: #166534; }
+        .badge-update { background: #dbeafe; color: #1e40af; }
+        .badge-skip { background: #fef3c7; color: #92400e; }
+        .badge-neutral { background: #f1f5f9; color: #475569; }
+        .dark .badge-insert { background: rgba(34,197,94,.15); color: #4ade80; }
+        .dark .badge-update { background: rgba(59,130,246,.15); color: #60a5fa; }
+        .dark .badge-skip { background: rgba(234,179,8,.15); color: #facc15; }
+        .dark .badge-neutral { background: rgba(148,163,184,.15); color: #94a3b8; }
+
+        /* ── Connection Badge ── */
+        .conn-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; margin-right: 4px; }
+        .conn-ok .conn-dot { background: #22c55e; }
+        .conn-fail .conn-dot { background: #ef4444; animation: bpulse 2s infinite; }
+        .conn-off .conn-dot { background: #94a3b8; }
+        @keyframes bpulse { 0%,100% { opacity:1 } 50% { opacity:.4 } }
+
+        /* ── Info Box ── */
+        .info-box {
+            padding: 12px 16px; border-radius: var(--radius-sm); font-size: 13px;
+            border: 1px solid #bfdbfe; background: #eff6ff; color: #1e40af;
+        }
+        .dark .info-box { border-color: rgba(59,130,246,.25); background: rgba(37,99,235,.08); color: #93c5fd; }
+
+        /* ── Empty State ── */
+        .empty-state {
+            text-align: center; padding: 40px 20px; color: #94a3b8;
+        }
+        .empty-state i { font-size: 32px; margin-bottom: 12px; display: block; opacity: .5; }
+
+        /* ── Quick Action Card ── */
+        .action-card {
+            padding: 16px; border: 1px solid #e2e8f0; border-radius: var(--radius);
+            background: white; text-align: left; cursor: pointer; transition: all .15s;
+        }
+        .action-card:hover { border-color: #93c5fd; background: #f8fafc; transform: translateY(-1px); }
+        .dark .action-card { background: #1e293b; border-color: #334155; }
+        .dark .action-card:hover { border-color: rgba(59,130,246,.4); background: rgba(37,99,235,.06); }
+        .action-card i { font-size: 20px; margin-bottom: 8px; display: block; }
+
+        /* ── Ref Table Grid ── */
+        .ref-tile {
+            padding: 10px 12px; border: 1px solid #e2e8f0; border-radius: var(--radius-sm);
+            cursor: pointer; transition: all .15s; font-size: 13px;
+        }
+        .ref-tile:hover { background: #eff6ff; border-color: #93c5fd; }
+        .dark .ref-tile { border-color: #334155; }
+        .dark .ref-tile:hover { background: rgba(37,99,235,.08); border-color: rgba(59,130,246,.3); }
+
+        /* ── Range Slider ── */
+        input[type="range"] {
+            -webkit-appearance: none; appearance: none; width: 100%; height: 6px;
+            border-radius: 999px; background: #e2e8f0; outline: none;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none; width: 20px; height: 20px; border-radius: 50%;
+            background: #2563eb; cursor: pointer; border: 3px solid white;
+            box-shadow: 0 1px 4px rgba(0,0,0,.2);
+        }
+        .dark input[type="range"] { background: #334155; }
+        .dark input[type="range"]::-webkit-slider-thumb { border-color: #1e293b; }
+
+        /* ── Modal ── */
+        .modal-backdrop {
+            position: fixed; inset: 0; z-index: 50; display: none;
+            align-items: center; justify-content: center;
+            background: rgba(0,0,0,.5); backdrop-filter: blur(4px);
+        }
+        .modal-box {
+            background: white; border-radius: 16px; box-shadow: 0 25px 60px rgba(0,0,0,.2);
+            max-width: 720px; width: calc(100% - 32px); max-height: 85vh;
+            overflow: hidden; display: flex; flex-direction: column;
+        }
+        .dark .modal-box { background: #1e293b; }
+
+        /* ── Toast ── */
+        .toast-container { position: fixed; top: 16px; right: 16px; z-index: 60; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
+        .toast-item { pointer-events: auto; }
+
+        /* ── Utility ── */
+        .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .page { display: none; }
+        .page.active { display: block; }
+
+        /* ── Responsive fine-tuning ── */
+        @media (max-width: 640px) {
+            .card { padding: 16px; }
+            .btn { padding: 10px 16px; font-size: 13px; }
+            .stat-value { font-size: 22px; }
+            .form-input { padding: 10px 12px; font-size: 16px; } /* 16px mencegah zoom di iOS */
+        }
+    </style>
+</head>
+<body class="bg-surface-50 text-surface-900 dark:bg-surface-950 dark:text-surface-100 min-h-screen">
+
+    <!-- CSS-Only Sidebar Toggle -->
+    <input type="checkbox" id="sidebarToggle">
+    <input type="checkbox" id="logToggle">
+
+    <!-- Toast Container -->
+    <div class="toast-container" id="toastBox"></div>
+
+    <!-- Sidebar Overlay (mobile) -->
+    <label for="sidebarToggle" class="hidden" id="sidebarOverlay"></label>
+
+    <!-- ═══════════════════════════════
+         SIDEBAR
+         ═══════════════════════════════ -->
+    <aside class="sidebar" id="sidebar">
+        <!-- Brand -->
+        <div class="flex items-center gap-3 px-5 h-14 border-b border-surface-200 dark:border-surface-700 shrink-0">
+            <div class="w-8 h-8 bg-primary-600 rounded-lg flex items-center justify-center flex-shrink-0">
+                <i class="fa-solid fa-bolt text-white text-sm"></i>
+            </div>
+            <span class="font-bold text-[15px] truncate">NeoFeeder v3.1</span>
+        </div>
+
+        <!-- Navigation -->
+        <nav class="flex-1 py-3 px-3 space-y-1 overflow-y-auto">
+            <a href="#" class="nav-item active" data-page="dashboard">
+                <i class="fa-solid fa-gauge-high"></i><span>Dashboard</span>
+            </a>
+            <a href="#" class="nav-item" data-page="config">
+                <i class="fa-solid fa-plug"></i><span>Konfigurasi</span>
+            </a>
+            <a href="#" class="nav-item" data-page="template">
+                <i class="fa-solid fa-table"></i><span>Template Excel</span>
+            </a>
+            <a href="#" class="nav-item" data-page="import">
+                <i class="fa-solid fa-arrow-up-from-bracket"></i><span>Import Data</span>
+            </a>
+            <a href="#" class="nav-item" data-page="history">
+                <i class="fa-solid fa-clock-rotate-left"></i><span>Riwayat</span>
+            </a>
+            <a href="#" class="nav-item" data-page="reference">
+                <i class="fa-solid fa-layer-group"></i><span>Referensi</span>
+            </a>
+        </nav>
+
+        <!-- Footer -->
+        <div class="px-5 py-3 border-t border-surface-200 dark:border-surface-700 text-[10px] text-surface-400 shrink-0">
+            Neo Feeder Importer v3.1
+        </div>
+    </aside>
+
+    <!-- ═══════════════════════════════
+         MAIN AREA
+         ═══════════════════════════════ -->
+    <div class="main-area">
+
+        <!-- Header -->
+        <header class="app-header">
+            <label for="sidebarToggle" class="hamburger lg:hidden" aria-label="Menu">
+                <i class="fa-solid fa-bars"></i>
+            </label>
+            <nav class="text-sm text-surface-500 truncate" id="breadcrumb">
+                <i class="fa-solid fa-gauge-high mr-1 text-primary-500"></i>Dashboard
+            </nav>
+            <div class="flex-1"></div>
+            <span id="connBadge" class="conn-off px-2.5 py-1 rounded-full text-[11px] font-medium bg-surface-100 dark:bg-surface-800 text-surface-500 flex-shrink-0">
+                <span class="conn-dot"></span>Belum terhubung
+            </span>
+        </header>
+
+        <!-- Page Content -->
+        <main class="flex-1 p-4 md:p-6 overflow-y-auto">
+
+            <!-- ══════════════════════════
+                 DASHBOARD
+                 ══════════════════════════ -->
+            <div class="page active" id="page-dashboard">
+                <div class="flex items-center justify-between mb-6">
+                    <h1 class="text-xl md:text-2xl font-bold">Dashboard</h1>
+                    <span class="badge badge-neutral hidden sm:inline-block">v3.1</span>
+                </div>
+
+                <!-- Stats -->
+                <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 mb-6">
+                    <div class="card card-hover">
+                        <p class="stat-label">Dictionary</p>
+                        <p class="stat-value">0</p>
+                        <p class="stat-sub">dari 27 endpoint</p>
+                    </div>
+                    <div class="card card-hover">
+                        <p class="stat-label">Referensi</p>
+                        <p class="stat-value">0</p>
+                        <p class="stat-sub">dari 14 tabel</p>
+                    </div>
+                    <div class="card card-hover">
+                        <p class="stat-label">Token</p>
+                        <p class="stat-value text-red-400">—</p>
+                    </div>
+                    <div class="card card-hover">
+                        <p class="stat-label">Log</p>
+                        <p class="stat-value">0</p>
+                    </div>
+                </div>
+
+                <!-- Quick Actions -->
+                <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+                    <div class="action-card" data-goto="config">
+                        <i class="fa-solid fa-plug text-primary-500"></i>
+                        <span class="text-sm font-medium">Konfigurasi</span>
+                        <p class="text-[11px] text-surface-400 mt-0.5">URL, akun, koneksi</p>
+                    </div>
+                    <div class="action-card" data-goto="template">
+                        <i class="fa-solid fa-table text-emerald-500"></i>
+                        <span class="text-sm font-medium">Template</span>
+                        <p class="text-[11px] text-surface-400 mt-0.5">Generate file Excel</p>
+                    </div>
+                    <div class="action-card" data-goto="import">
+                        <i class="fa-solid fa-arrow-up-from-bracket text-blue-500"></i>
+                        <span class="text-sm font-medium">Import Data</span>
+                        <p class="text-[11px] text-surface-400 mt-0.5">Upload & proses</p>
+                    </div>
+                    <div class="action-card">
+                        <i class="fa-solid fa-cloud-arrow-down text-purple-500"></i>
+                        <span class="text-sm font-medium">Refresh Data</span>
+                        <p class="text-[11px] text-surface-400 mt-0.5">Dictionary & referensi</p>
+                    </div>
+                </div>
+
+                <!-- Panduan -->
+                <div class="card">
+                    <h2 class="font-semibold text-sm mb-3">Panduan Cepat</h2>
+                    <ol class="text-sm text-surface-600 dark:text-surface-400 space-y-2 list-decimal list-inside">
+                        <li><strong class="text-surface-800 dark:text-surface-200">Konfigurasi</strong> — masukkan URL Neo Feeder, lalu Test Koneksi</li>
+                        <li><strong class="text-surface-800 dark:text-surface-200">Refresh Metadata</strong> — unduh dictionary & data referensi</li>
+                        <li><strong class="text-surface-800 dark:text-surface-200">Template</strong> — download file Excel sesuai endpoint yang diinginkan</li>
+                        <li><strong class="text-surface-800 dark:text-surface-200">Import</strong> — upload Excel, endpoint terdeteksi otomatis dari nama file & kolom</li>
+                    </ol>
+                    <div class="info-box mt-4">
+                        <strong>UpdateNilaiPerkuliahanKelas = UPSERT:</strong>
+                        Jika record nilai belum ada di server, akan otomatis di-INSERT. Jika sudah ada, akan di-UPDATE.
+                        Tidak perlu khawatir duplikasi — cukup kirim file nilai dan biarkan sistem yang menangani.
+                    </div>
+                </div>
+            </div>
+
+            <!-- ══════════════════════════
+                 KONFIGURASI
+                 ══════════════════════════ -->
+            <div class="page" id="page-config">
+                <h1 class="text-xl md:text-2xl font-bold mb-6">Konfigurasi</h1>
+
+                <div class="card max-w-2xl space-y-5">
+                    <div>
+                        <label class="form-label" for="cfgUrl">URL Neo Feeder</label>
+                        <input type="url" id="cfgUrl" class="form-input" value="http://localhost:3003/ws/live2.php" placeholder="http://...">
+                        <p class="form-hint">Alamat endpoint WS Live2.php di server Neo Feeder</p>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label class="form-label" for="cfgUser">Username</label>
+                            <input type="text" id="cfgUser" class="form-input" placeholder="admin">
+                        </div>
+                        <div>
+                            <label class="form-label" for="cfgPass">Password</label>
+                            <input type="password" id="cfgPass" class="form-input" placeholder="••••••••">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="form-label" for="cfgTimeout">Timeout (ms)</label>
+                        <input type="number" id="cfgTimeout" class="form-input" value="30000" min="5000" step="1000">
+                        <p class="form-hint">Batas waktu tunggu setiap request ke server</p>
+                    </div>
+
+                    <div class="flex flex-wrap gap-2 pt-2">
+                        <button class="btn btn-primary"><i class="fa-solid fa-floppy-disk"></i><span>Simpan</span></button>
+                        <button class="btn btn-success"><i class="fa-solid fa-vial"></i><span>Test Koneksi</span></button>
+                        <button class="btn btn-purple"><i class="fa-solid fa-cloud-arrow-down"></i><span>Refresh Metadata</span></button>
+                        <button class="btn btn-danger"><i class="fa-solid fa-trash"></i><span>Hapus Cache</span></button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ══════════════════════════
+                 TEMPLATE EXCEL
+                 ══════════════════════════ -->
+            <div class="page" id="page-template">
+                <h1 class="text-xl md:text-2xl font-bold mb-6">Template Excel</h1>
+
+                <div class="card max-w-2xl space-y-5">
+                    <div>
+                        <label class="form-label" for="tplEp">Pilih Endpoint</label>
+                        <select id="tplEp" class="form-input" disabled>
+                            <option>-- Belum ada dictionary. Refresh Metadata dulu --</option>
+                        </select>
+                        <p class="form-hint">Endpoint yang tersedia akan muncul setelah metadata diunduh</p>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        <button class="btn btn-success" disabled>
+                            <i class="fa-solid fa-download"></i><span>Download Template</span>
+                        </button>
+                        <button class="btn btn-purple">
+                            <i class="fa-solid fa-cloud-arrow-down"></i><span>Refresh Metadata</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Info apa yang ada di template -->
+                <div class="card max-w-2xl mt-4">
+                    <h3 class="text-sm font-semibold mb-2">Apa yang ada di dalam template?</h3>
+                    <ul class="text-sm text-surface-500 dark:text-surface-400 space-y-1.5">
+                        <li class="flex items-start gap-2"><i class="fa-solid fa-check text-emerald-500 mt-0.5 text-xs"></i>Sheet <strong>DATA</strong> — kolom-kolom sesuai dictionary endpoint</li>
+                        <li class="flex items-start gap-2"><i class="fa-solid fa-check text-emerald-500 mt-0.5 text-xs"></i>Sheet <strong>PANDUAN</strong> — penjelasan tiap kolom, tipe data, wajib/opsional</li>
+                        <li class="flex items-start gap-2"><i class="fa-solid fa-check text-emerald-500 mt-0.5 text-xs"></i>Sheet <strong>REFERENSI</strong> — data lookup (agama, prodi, dll) jika sudah tersinkron</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- ══════════════════════════
+                 IMPORT DATA
+                 ══════════════════════════ -->
+            <div class="page" id="page-import">
+                <h1 class="text-xl md:text-2xl font-bold mb-6">Import Data</h1>
+
+                <!-- Pengaturan -->
+                <div class="card space-y-5 mb-4">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="form-label" for="impEp">Endpoint Tujuan</label>
+                            <select id="impEp" class="form-input">
+                                <option value="">Auto-detect dari file</option>
+                            </select>
+                            <p class="form-hint">Kosongkan = deteksi otomatis dari nama file & header kolom</p>
+                        </div>
+                        <div>
+                            <label class="form-label" for="impMode">Mode</label>
+                            <select id="impMode" class="form-input">
+                                <option value="insert">Insert Only</option>
+                                <option value="upsert">Upsert (Insert/Update)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="form-label">Concurrency</label>
+                            <div class="flex items-center gap-3">
+                                <input type="range" id="impConc" min="1" max="10" value="3" class="flex-1">
+                                <span class="text-sm font-bold w-6 text-center tabular-nums" id="concVal">3</span>
+                            </div>
+                            <p class="form-hint">1 = aman & lambat, 5–10 = cepat & agresif</p>
+                        </div>
+                        <div>
+                            <label class="form-label" for="impErr">Jika Terjadi Error</label>
+                            <select id="impErr" class="form-input">
+                                <option value="skip">Lewati baris gagal, lanjutkan</option>
+                                <option value="abort">Hentikan seluruh proses</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Drop Zone -->
+                    <div class="drop-zone" id="dropZone">
+                        <i class="fa-solid fa-cloud-arrow-up text-3xl text-surface-300 dark:text-surface-600 mb-3 block"></i>
+                        <p class="text-sm text-surface-500 mb-1">Drag & drop file Excel di sini</p>
+                        <p class="text-xs text-surface-400 mb-4">Format: .xlsx atau .xls</p>
+                        <label class="btn btn-primary cursor-pointer">
+                            <i class="fa-solid fa-folder-open"></i><span>Pilih File</span>
+                            <input type="file" accept=".xlsx,.xls" class="hidden" id="fileIn">
+                        </label>
+                    </div>
+
+                    <!-- Upload Status -->
+                    <div id="uploadSt" class="text-sm"></div>
+                </div>
+
+                <!-- Preview (hidden) -->
+                <div class="card space-y-4 mb-4 hidden" id="previewSec">
+                    <div class="flex items-center justify-between">
+                        <h2 class="font-semibold">Preview Data</h2>
+                        <span class="badge badge-neutral" id="previewCount">0 baris</span>
+                    </div>
+                    <div class="overflow-x-auto max-h-72 md:max-h-96 border border-surface-200 dark:border-surface-700 rounded-lg" id="previewTbl">
+                        <div class="empty-state">
+                            <i class="fa-solid fa-table text-surface-300 dark:text-surface-600"></i>
+                            <p class="text-sm">Preview akan muncul setelah file dipilih</p>
+                        </div>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        <button class="btn btn-amber" id="btnDryRun">
+                            <i class="fa-solid fa-flask"></i><span>Dry Run</span>
+                        </button>
+                        <button class="btn btn-success" id="btnStartImport">
+                            <i class="fa-solid fa-play"></i><span>Mulai Import</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Progress (hidden) -->
+                <div class="card space-y-4 hidden" id="progressSec">
+                    <h2 class="font-semibold">Progress Import</h2>
+                    <div class="progress-track">
+                        <div class="progress-fill" id="progBar" style="width:0%">0%</div>
+                    </div>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                        <div>Baris: <strong id="pDone">0/0</strong></div>
+                        <div>Berhasil: <strong id="pOk" class="text-emerald-600">0</strong></div>
+                        <div>Gagal: <strong id="pFail" class="text-red-500">0</strong></div>
+                        <div>Sisa: <strong id="pEta">—</strong></div>
+                    </div>
+                    <button class="btn btn-danger" id="btnCancel">
+                        <i class="fa-solid fa-stop"></i><span>Batalkan</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- ══════════════════════════
+                 RIWAYAT
+                 ══════════════════════════ -->
+            <div class="page" id="page-history">
+                <div class="flex items-center justify-between mb-6">
+                    <h1 class="text-xl md:text-2xl font-bold">Riwayat Import</h1>
+                    <button class="btn btn-ghost text-xs"><i class="fa-solid fa-trash text-red-400 mr-1"></i>Hapus Semua</button>
+                </div>
+
+                <div class="empty-state card" id="histEmpty">
+                    <i class="fa-solid fa-clock-rotate-left"></i>
+                    <p class="text-sm font-medium mb-1">Belum ada riwayat</p>
+                    <p class="text-xs">Riwayat import akan muncul di sini setelah Anda menjalankan import data.</p>
+                </div>
+
+                <!-- Contoh item riwayat (akan di-generate JS nanti) -->
+                <div class="space-y-2 hidden" id="histList">
+                    <!-- JS akan inject item di sini -->
+                </div>
+            </div>
+
+            <!-- ══════════════════════════
+                 REFERENSI
+                 ══════════════════════════ -->
+            <div class="page" id="page-reference">
+                <h1 class="text-xl md:text-2xl font-bold mb-6">Referensi Data</h1>
+
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+
+                    <!-- Tabel Referensi Umum -->
+                    <div class="card space-y-3">
+                        <div class="flex items-center justify-between">
+                            <h2 class="font-semibold text-sm">Tabel Referensi Umum</h2>
+                            <span class="badge badge-neutral" id="refCount">14 tabel</span>
+                        </div>
+                        <div class="grid grid-cols-2 sm:grid-cols-3 gap-2" id="refGrid">
+                            <div class="ref-tile"><span class="font-medium">agama</span> <span class="text-xs text-surface-400">(0)</span></div>
+                            <div class="ref-tile"><span class="font-medium">prodi</span> <span class="text-xs text-surface-400">(0)</span></div>
+                            <div class="ref-tile"><span class="font-medium">semester</span> <span class="text-xs text-surface-400">(0)</span></div>
+                            <div class="ref-tile"><span class="font-medium">mata_kuliah</span> <span class="text-xs text-surface-400">(0)</span></div>
+                            <div class="ref-tile"><span class="font-medium">dosen</span> <span class="text-xs text-surface-400">(0)</span></div>
+                            <div class="ref-tile"><span class="font-medium">wilayah</span> <span class="text-xs text-surface-400">(0)</span></div>
+                            <div class="ref-tile"><span class="font-medium">kurikulum</span> <span class="text-xs text-surface-400">(0)</span></div>
+                            <div class="ref-tile"><span class="font-medium">status_mahasiswa</span> <span class="text-xs text-surface-400">(0)</span></div>
+                            <div class="ref-tile"><span class="font-medium">jalur_masuk</span> <span class="text-xs text-surface-400">(0)</span></div>
+                            <div class="ref-tile"><span class="font-medium">jenis_tinggal</span> <span class="text-xs text-surface-400">(0)</span></div>
+                            <div class="ref-tile"><span class="font-medium">pekerjaan</span> <span class="text-xs text-surface-400">(0)</span></div>
+                            <div class="ref-tile"><span class="font-medium">penghasilan</span> <span class="text-xs text-surface-400">(0)</span></div>
+                            <div class="ref-tile"><span class="font-medium">negara</span> <span class="text-xs text-surface-400">(0)</span></div>
+                            <div class="ref-tile"><span class="font-medium">mahasiswa</span> <span class="text-xs text-surface-400">(0)</span></div>
+                        </div>
+                    </div>
+
+                    <!-- Data Perkuliahan -->
+                    <div class="card space-y-3">
+                        <h2 class="font-semibold text-sm">Data Perkuliahan</h2>
+
+                        <div class="empty-state !py-6" id="refPerkuliahanEmpty">
+                            <i class="fa-solid fa-database text-surface-300 dark:text-surface-600"></i>
+                            <p class="text-sm font-medium mb-1">Belum ada data periode</p>
+                            <p class="text-xs">Sinkronisasi referensi terlebih dahulu dari menu Konfigurasi.</p>
+                        </div>
+
+                        <!-- Isi akan muncul setelah referensi semester tersedia -->
+                        <div class="space-y-3 hidden" id="refPerkuliahanForm">
+                            <div>
+                                <label class="form-label" for="refSem">Periode</label>
+                                <select id="refSem" class="form-input">
+                                    <option value="">-- Pilih Periode --</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="form-label" for="refKelas">Nama Kelas</label>
+                                <select id="refKelas" class="form-input">
+                                    <option value="">-- Pilih Kelas --</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="form-label" for="refMK">Kode MK</label>
+                                <select id="refMK" class="form-input">
+                                    <option value="">-- Pilih MK --</option>
+                                </select>
+                            </div>
+                            <button class="btn btn-primary w-full" id="btnLoadPerkuliahan">
+                                <i class="fa-solid fa-magnifying-glass"></i><span>Tampilkan Detail</span>
+                            </button>
+                            <div class="space-y-2 max-h-72 overflow-y-auto text-sm" id="refPerkuliahan">
+                                <p class="text-xs text-surface-400 text-center py-4">Pilih periode, kelas, dan MK untuk melihat detail.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </main>
+
+        <!-- ═══════════════════════════════
+             LOG PANEL
+             ═══════════════════════════════ -->
+        <label for="logToggle" class="log-panel" id="logPanel">
+            <div class="log-panel-header">
+                <span class="text-xs font-medium flex items-center gap-1.5">
+                    <i class="fa-solid fa-terminal text-primary-500"></i>Console Log
+                    <span id="logCount" class="text-surface-400">(0)</span>
+                </span>
+                <div class="flex items-center gap-2">
+                    <button class="p-1.5 rounded hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-400 text-[10px]" id="btnClearLog" title="Hapus log">
+                        <i class="fa-solid fa-eraser"></i>
+                    </button>
+                    <button class="p-1.5 rounded hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-400 text-[10px]" id="btnDownloadLog" title="Download log">
+                        <i class="fa-solid fa-download"></i>
+                    </button>
+                    <i class="fa-solid fa-chevron-down text-[10px] text-surface-400 log-chevron transition-transform"></i>
+                </div>
+            </div>
+            <div class="log-panel-body" id="logContent">
+                <div class="empty-state !py-8" id="logPlaceholder">
+                    <i class="fa-solid fa-terminal text-surface-700 dark:text-surface-500"></i>
+                    <p class="text-xs">Log aktivitas akan muncul di sini</p>
+                </div>
+            </div>
+        </label>
+    </div>
+
+    <!-- ═══════════════════════════════
+         MODAL
+         ═══════════════════════════════ -->
+    <div class="modal-backdrop" id="modalOverlay">
+        <div class="modal-box">
+            <div class="flex justify-between items-center px-6 py-3.5 border-b border-surface-200 dark:border-surface-700 shrink-0">
+                <h3 class="font-semibold" id="modalTitle">Modal</h3>
+                <button class="p-2 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800 transition" id="btnCloseModal">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <div class="p-6 overflow-y-auto flex-1" id="modalBody">
+                <p class="text-surface-400 text-sm">Konten modal</p>
+            </div>
+            <div class="flex justify-end gap-2 px-6 py-3 border-t border-surface-200 dark:border-surface-700 shrink-0" id="modalFooter">
+                <button class="btn btn-ghost">Tutup</button>
+            </div>
+        </div>
+    </div>
+
+</body>
+</html>

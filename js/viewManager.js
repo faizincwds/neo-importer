@@ -1,0 +1,37 @@
+import { renderDashboard } from './dashboard.js';
+import { renderReferensiView } from './referensi.js';
+import { renderInsertView } from './insertWizard.js';
+
+export function initViewManager(mainContent) {
+  const navButtons = document.querySelectorAll('#sidebar-nav .nav-btn');
+
+  async function loadView(viewName) {
+    // Bersihkan main content (kecuali jika masih ada login view)
+    mainContent.innerHTML = '';
+    switch(viewName) {
+      case 'dashboard':
+        await renderDashboard(mainContent);
+        break;
+      case 'import':
+        renderInsertView(mainContent);
+        break;
+      case 'referensi':
+        await renderReferensiView(mainContent);
+        break;
+      // ... lainnya
+      default:
+        mainContent.innerHTML = `<div class="glass p-6 rounded-2xl"><h2 class="text-xl font-bold">${viewName} (Segera hadir)</h2></div>`;
+    }
+    // Update active state
+    navButtons.forEach(btn => btn.classList.remove('active'));
+    const activeBtn = document.querySelector(`[data-view="${viewName}"]`);
+    if (activeBtn) activeBtn.classList.add('active');
+  }
+
+  navButtons.forEach(btn => {
+    btn.addEventListener('click', () => loadView(btn.dataset.view));
+  });
+
+  // Load dashboard sebagai default
+  loadView('dashboard');
+}

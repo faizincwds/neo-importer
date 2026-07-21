@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neo Feeder Importer v2.25</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        primary: { 50: '#eff6ff', 100: '#dbeafe', 200: '#bfdbfe', 300: '#93c5fd', 400: '#60a5fa', 500: '#3b82f6', 600: '#2563eb', 700: '#1d4ed8', 800: '#1e40af', 900: '#1e3a8a', 950: '#172554' },
+                        surface: { 50: '#f8fafc', 100: '#f1f5f9', 200: '#e2e8f0', 300: '#cbd5e1', 400: '#94a3b8', 500: '#64748b', 600: '#475569', 700: '#334155', 800: '#1e293b', 900: '#0f172a', 950: '#020617' }
+                    }
+                }
+            }
+        }
+    </script>
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        :root { --sidebar-width: 260px; }
+        .sidebar { width: var(--sidebar-width); transition: transform 0.3s; }
+        .log-console { font-family: 'JetBrains Mono', monospace; font-size: 12px; background: #0f172a; color: #e2e8f0; }
+        .log-entry { border-left: 3px solid transparent; padding: 2px 8px; }
+        .log-info { border-left-color: #60a5fa; color: #93c5fd; }
+        .log-success { border-left-color: #34d399; color: #6ee7b7; }
+        .log-error { border-left-color: #f87171; color: #fca5a5; background: rgba(248, 113, 113, 0.05); }
+        .drop-zone { border: 2px dashed #cbd5e1; cursor: pointer; }
+        .drop-zone:hover, .drop-zone.active { border-color: #3b82f6; background: #eff6ff; }
+        .toast { animation: slideIn 0.4s; }
+        @keyframes slideIn { from { transform: translateX(100px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+    </style>
+</head>
+<body class="bg-surface-50 text-surface-900 dark:bg-surface-950 dark:text-surface-100 min-h-screen">
+
+    <!-- Toast Container -->
+    <div class="fixed top-5 right-5 z-50 flex flex-col gap-2" id="toastContainer"></div>
+
+    <!-- Sidebar -->
+    <aside class="sidebar fixed left-0 top-0 h-full bg-white dark:bg-surface-900 border-r z-40 flex flex-col shadow-lg" id="sidebar">
+        <div class="flex items-center gap-3 px-5 py-4 border-b h-[60px]">
+            <div class="w-9 h-9 bg-primary-600 rounded-lg flex items-center justify-center"><i class="fa-solid fa-cloud-arrow-up text-white"></i></div>
+            <span class="font-bold text-lg sidebar-text">NeoFeeder</span>
+        </div>
+        <nav class="flex-1 py-3 px-3 space-y-1" id="sidebarNav">
+            <a href="#" data-page="dashboard" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-primary-50 dark:hover:bg-primary-950 cursor-pointer active bg-primary-50 dark:bg-primary-900/30"><i class="fa-solid fa-gauge w-5"></i><span class="sidebar-text text-sm">Dashboard</span></a>
+            <a href="#" data-page="config" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-primary-50 dark:hover:bg-primary-950 cursor-pointer"><i class="fa-solid fa-gear w-5"></i><span class="sidebar-text text-sm">Konfigurasi</span></a>
+            <a href="#" data-page="template" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-primary-50 dark:hover:bg-primary-950 cursor-pointer"><i class="fa-solid fa-file-excel w-5"></i><span class="sidebar-text text-sm">Template Excel</span></a>
+            <a href="#" data-page="import" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-primary-50 dark:hover:bg-primary-950 cursor-pointer"><i class="fa-solid fa-upload w-5"></i><span class="sidebar-text text-sm">Import Data</span></a>
+            <a href="#" data-page="history" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-primary-50 dark:hover:bg-primary-950 cursor-pointer"><i class="fa-solid fa-clock-rotate-left w-5"></i><span class="sidebar-text text-sm">Riwayat</span></a>
+            <a href="#" data-page="reference" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-primary-50 dark:hover:bg-primary-950 cursor-pointer"><i class="fa-solid fa-database w-5"></i><span class="sidebar-text text-sm">Referensi</span></a>
+        </nav>
+    </aside>
+
+    <!-- Main -->
+    <div class="lg:ml-[260px] transition-all duration-300 min-h-screen flex flex-col" id="mainContent">
+        <header class="sticky top-0 z-30 bg-white/80 dark:bg-surface-900/80 backdrop-blur-md border-b h-[60px] flex items-center px-4 gap-3">
+            <button onclick="toggleSidebar()" class="lg:hidden p-2 rounded-lg hover:bg-surface-100"><i class="fa-solid fa-bars"></i></button>
+            <nav class="text-sm text-surface-500" id="breadcrumb"><span>Dashboard</span></nav>
+            <div class="flex-1"></div>
+            <span id="connectionBadge" class="px-3 py-1.5 rounded-full text-xs font-medium bg-green-50 text-green-700"><span class="w-2 h-2 rounded-full bg-green-500 inline-block mr-1"></span><span id="connectionLabel">Terhubung</span></span>
+        </header>
+        <main class="flex-1 p-4 md:p-6 overflow-y-auto" id="pageContent"></main>
+        <div class="border-t bg-white dark:bg-surface-900" id="logPanel" style="height: 250px;">
+            <div class="flex items-center justify-between px-4 py-2 border-b bg-surface-50 dark:bg-surface-800 cursor-pointer" onclick="toggleLogPanel()">
+                <span class="text-sm font-medium"><i class="fa-solid fa-terminal text-primary-500 mr-2"></i>Console Log <span id="logCount" class="text-xs text-surface-400">(0)</span></span>
+                <div class="flex gap-2">
+                    <button onclick="event.stopPropagation(); clearLogs()" class="p-1 rounded hover:bg-surface-200 text-xs"><i class="fa-solid fa-eraser"></i></button>
+                    <button onclick="event.stopPropagation(); downloadLogs()" class="p-1 rounded hover:bg-surface-200 text-xs"><i class="fa-solid fa-download"></i></button>
+                </div>
+            </div>
+            <div class="log-console overflow-y-auto p-2" id="logContent" style="height: calc(100% - 40px);">
+                <div class="text-surface-500 text-xs p-4 text-center" id="logPlaceholder">Log akan muncul di sini...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal -->
+    <div class="fixed inset-0 z-50 hidden items-center justify-center bg-black/50" id="modalOverlay" onclick="closeModal(event)">
+        <div class="bg-white dark:bg-surface-900 rounded-2xl shadow-2xl max-w-2xl w-full mx-4 max-h-[85vh] overflow-hidden" onclick="event.stopPropagation()">
+            <div class="flex justify-between items-center px-6 py-4 border-b"><h3 class="font-semibold text-lg" id="modalTitle"></h3><button onclick="closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
+            <div class="p-6 overflow-y-auto max-h-[60vh]" id="modalBody"></div>
+            <div class="flex justify-end gap-3 px-6 py-4 border-t" id="modalFooter"></div>
+        </div>
+    </div>
+
+    <script type="module">
+        // =============================================
+        // NEO FEEDER IMPORTER v2.25 – FULLY CORRECTED
+        // =============================================
+        const $ = (sel) => document.querySelector(sel);
+        const $$ = (sel) => document.querySelectorAll(sel);
+
+        const state = {
+            config: { url: '', username: '', password: '', timeout: 30000 },
+            token: null,
+            dictionary: {},
+            references: {},
+            logEntries: [],
+            autoScroll: true,
+            isImporting: false,
+            importStats: null,
+            importAbortController: null,
+            importMode: 'insert',
+            currentPage: 'dashboard',
+        };
+
+        // ─── IndexedDB ────────────────────────────
+        const DB_NAME = 'NeoFeederDBv2.25';
+        let db;
+        async function openDB() { return new Promise((resolve, reject) => { const req = indexedDB.open(DB_NAME, 2); req.onupgradeneeded = (e) => { const d = e.target.result; if (!d.objectStoreNames.contains('dictionary')) d.createObjectStore('dictionary', { keyPath: 'endpoint' }); if (!d.objectStoreNames.contains('references')) d.createObjectStore('references', { keyPath: 'table' }); if (!d.objectStoreNames.contains('logs')) { const s = d.createObjectStore('logs', { keyPath: 'id', autoIncrement: true }); s.createIndex('timestamp', 'timestamp'); } if (!d.objectStoreNames.contains('history')) { const s = d.createObjectStore('history', { keyPath: 'id', autoIncrement: true }); s.createIndex('date', 'date'); } }; req.onsuccess = (e) => { db = e.target.result; resolve(db); }; req.onerror = (e) => reject(e.target.error); }); }
+        async function dbPut(store, data) { return new Promise((res, rej) => { const tx = db.transaction(store, 'readwrite'); const r = tx.objectStore(store).put(data); r.onsuccess = () => res(r.result); r.onerror = (e) => rej(e.target.error); }); }
+        async function dbGet(store, key) { return new Promise((res, rej) => { const tx = db.transaction(store, 'readonly'); const r = tx.objectStore(store).get(key); r.onsuccess = () => res(r.result); r.onerror = (e) => rej(e.target.error); }); }
+        async function dbGetAll(store) { return new Promise((res, rej) => { const tx = db.transaction(store, 'readonly'); const r = tx.objectStore(store).getAll(); r.onsuccess = () => res(r.result); r.onerror = (e) => rej(e.target.error); }); }
+        async function dbClear(store) { return new Promise((res, rej) => { const tx = db.transaction(store, 'readwrite'); const r = tx.objectStore(store).clear(); r.onsuccess = () => res(); r.onerror = (e) => rej(e.target.error); }); }
+
+        function lsGet(k, def = null) { try { return JSON.parse(localStorage.getItem('nf_'+k)) ?? def; } catch { return def; } }
+        function lsSet(k, v) { localStorage.setItem('nf_'+k, JSON.stringify(v)); }
+        function lsRemove(k) { localStorage.removeItem('nf_'+k); }
+        function clearAllStorage() { for (let i = localStorage.length - 1; i >= 0; i--) { const key = localStorage.key(i); if (key.startsWith('nf_')) localStorage.removeItem(key); } }
+
+        function addLog(level, msg, detail = null) { const entry = { timestamp: new Date().toISOString(), level, message: msg, details: detail ? JSON.stringify(detail) : null }; state.logEntries.push(entry); if (db) dbPut('logs', entry).catch(() => {}); renderLogEntry(entry); updateLogCount(); if (state.autoScroll) $('#logContent').scrollTop = $('#logContent').scrollHeight; }
+        function renderLogEntry(e) { $('#logPlaceholder').style.display = 'none'; const div = document.createElement('div'); div.className = `log-entry log-${e.level}`; div.innerHTML = `<span class="text-surface-500 text-[10px] mr-2">${new Date(e.timestamp).toLocaleTimeString('id-ID', {hour12:false})}</span>${escapeHtml(e.message)}`; $('#logContent').appendChild(div); }
+        function updateLogCount() { $('#logCount').textContent = `(${state.logEntries.length})`; }
+        function clearLogs() { state.logEntries = []; $('#logContent').innerHTML = ''; $('#logPlaceholder').style.display = 'block'; updateLogCount(); dbClear('logs').catch(()=>{}); }
+        function downloadLogs() { const text = state.logEntries.map(e => `[${new Date(e.timestamp).toLocaleTimeString('id-ID')}] [${e.level.toUpperCase()}] ${e.message}`).join('\n'); const blob = new Blob([text], {type:'text/plain'}); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `neofeeder-log-${new Date().toISOString().slice(0,10)}.txt`; a.click(); }
+        function escapeHtml(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+        function showToast(msg, type='info') { const icons = { success: 'fa-circle-check text-green-500', error: 'fa-circle-xmark text-red-500', warning: 'fa-triangle-exclamation text-yellow-500', info: 'fa-circle-info text-blue-500' }; const borders = { success: 'border-l-green-500', error: 'border-l-red-500', warning: 'border-l-yellow-500', info: 'border-l-blue-500' }; const toast = document.createElement('div'); toast.className = `toast bg-white dark:bg-surface-800 shadow-lg rounded-lg px-4 py-3 flex items-center gap-3 text-sm border-l-4 ${borders[type] || borders.info}`; toast.innerHTML = `<i class="fa-solid ${icons[type] || icons.info}"></i><span class="flex-1">${escapeHtml(msg)}</span><button onclick="this.parentElement.remove()" class="text-surface-400"><i class="fa-solid fa-xmark text-xs"></i></button>`; $('#toastContainer').appendChild(toast); setTimeout(() => toast.remove(), 4000); }
+
+        function openModal(title, body, footer='') { $('#modalTitle').textContent = title; $('#modalBody').innerHTML = body; $('#modalFooter').innerHTML = footer; $('#modalOverlay').classList.remove('hidden'); $('#modalOverlay').classList.add('flex'); }
+        function closeModal(e) { if (e && e.target !== $('#modalOverlay')) return; $('#modalOverlay').classList.add('hidden'); $('#modalOverlay').classList.remove('flex'); }
+
+        async function apiCall(endpoint, data = {}) {
+            if (!state.config.url) throw new Error('URL belum dikonfigurasi');
+            if (!state.token && endpoint !== 'GetToken') await getToken();
+            const payload = { act: endpoint, ...data };
+            if (state.token && endpoint !== 'GetToken') payload.token = state.token;
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), state.config.timeout || 30000);
+            try {
+                const resp = await fetch(state.config.url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), signal: controller.signal });
+                clearTimeout(timer);
+                const result = await resp.json();
+                if (result.error_code && result.error_code !== 0) throw new Error(`[${result.error_code}] ${result.error_desc || 'Unknown error'}`);
+                return result;
+            } catch (err) { clearTimeout(timer); if (err.name === 'AbortError') throw new Error('Request timeout'); throw err; }
+        }
+
+        async function getToken() {
+            addLog('info', '🔑 Mendapatkan token...');
+            try {
+                const res = await apiCall('GetToken', { username: state.config.username, password: state.config.password });
+                state.token = res.token || res.data?.token; lsSet('token', state.token);
+                $('#connectionLabel').textContent = 'Terhubung'; addLog('success', '✅ Token berhasil');
+                return state.token;
+            } catch (err) { $('#connectionLabel').textContent = 'Gagal'; addLog('error', `❌ Token gagal: ${err.message}`); throw err; }
+        }
+
+        function getVal(obj, ...keys) { for (const k of keys) { if (obj && obj[k] !== undefined && obj[k] !== null && String(obj[k]).trim() !== '') return obj[k]; } return ''; }
+
+        function extractFields(obj, prefix) { const fields = []; for (const [key, meta] of Object.entries(obj)) { if (key === 'token') continue; const match = key.match(new RegExp(`^${prefix}\\[(.+)\\]$`)); if (match) { fields.push({ name: match[1], type: meta.type || '', required: meta.nullable === 'not null', description: meta.keterangan || '' }); } } return fields; }
+
+        async function getDictionary(endpoint) {
+            if (db) { const cached = await dbGet('dictionary', endpoint); if (cached) { state.dictionary[endpoint] = cached.data; return cached.data; } }
+            addLog('info', `📖 GetDictionary: ${endpoint}`);
+            const res = await apiCall('GetDictionary', { fungsi: endpoint });
+            const dictData = { request: res.data?.request || res.request || {}, response: res.data?.response || res.response || {} };
+            state.dictionary[endpoint] = dictData; if (db) await dbPut('dictionary', { endpoint, data: dictData });
+            const reqFields = extractFields(dictData.request, 'record'); const resFields = extractFields(dictData.response, 'data');
+            const info = reqFields.length > 0 ? `${reqFields.length} request fields` : `${resFields.length} response fields`;
+            addLog('success', `✅ Dictionary ${endpoint} (${info})`); return dictData;
+        }
+
+        const COMMON_ENDPOINTS = [ 'InsertBiodataMahasiswa', 'UpdateBiodataMahasiswa', 'InsertRiwayatPendidikanMahasiswa', 'UpdateRiwayatPendidikanMahasiswa', 'InsertMataKuliah', 'UpdateMataKuliah', 'InsertKelasKuliah', 'InsertPesertaKelasKuliah', 'InsertDosenPengajarKelasKuliah', 'UpdateNilaiPerkuliahanKelas', 'InsertKurikulum', 'InsertMatkulKurikulum', 'InsertPerkuliahanMahasiswa', 'InsertMahasiswaLulusDO', 'InsertAktivitasMahasiswa', 'InsertPrestasiMahasiswa', 'GetListKelasKuliah', 'GetPesertaKelasKuliah', 'GetListNilaiPerkuliahanKelas', 'GetListMahasiswa', 'GetListDosen', 'GetDosenPengajarKelasKuliah', 'GetDetailKelasKuliah' ];
+        async function downloadAllDictionaries() { addLog('info', '📚 Mengunduh semua dictionary...'); let success = 0; for (const ep of COMMON_ENDPOINTS) { try { await getDictionary(ep); success++; } catch (err) { addLog('error', `❌ Gagal dictionary ${ep}: ${err.message}`); } } addLog('info', `📚 Selesai: ${success}/${COMMON_ENDPOINTS.length} dictionary berhasil`); if (success === 0) showToast('Semua dictionary gagal. Periksa Console Log.', 'error'); }
+
+        const REFERENCE_MAP = [ { table: 'agama', endpoint: 'GetAgama', search: 'nama_agama', id: 'id_agama' }, { table: 'prodi', endpoint: 'GetProdi', search: 'kode_prodi', id: 'id_prodi' }, { table: 'semester', endpoint: 'GetSemester', search: 'kode_semester', id: 'id_semester' }, { table: 'mata_kuliah', endpoint: 'GetListMataKuliah', search: 'kode_mata_kuliah', id: 'id_matkul' }, { table: 'dosen', endpoint: 'GetListDosen', search: 'nuptk', id: 'id_dosen' }, { table: 'wilayah', endpoint: 'GetWilayah', search: 'kode_wilayah', id: 'id_wilayah' }, { table: 'kurikulum', endpoint: 'GetListKurikulum', search: 'kode_kurikulum', id: 'id_kurikulum' }, { table: 'status_mahasiswa', endpoint: 'GetStatusMahasiswa', search: 'nama_status', id: 'id_status_mahasiswa' }, { table: 'jalur_masuk', endpoint: 'GetJalurMasuk', search: 'nama_jalur_masuk', id: 'id_jalur_masuk' }, { table: 'jenis_tinggal', endpoint: 'GetJenisTinggal', search: 'nama_jenis_tinggal', id: 'id_jenis_tinggal' }, { table: 'pekerjaan', endpoint: 'GetPekerjaan', search: 'nama_pekerjaan', id: 'id_pekerjaan' }, { table: 'penghasilan', endpoint: 'GetPenghasilan', search: 'nama_penghasilan', id: 'id_penghasilan' }, { table: 'negara', endpoint: 'GetNegara', search: 'nama_negara', id: 'id_negara' }, { table: 'mahasiswa', endpoint: 'GetListMahasiswa', search: 'nim', id: 'id_mahasiswa' } ];
+        async function syncReference(table, endpoint, search, id, extraParams = {}) { if (db && !extraParams) { const cached = await dbGet('references', table); if (cached) { state.references[table] = cached.data; return cached.data; } } addLog('info', `🔄 Sinkronisasi ${table}...`); try { const res = await apiCall(endpoint, extraParams); const data = res.data || res[table] || []; state.references[table] = data; if (db) await dbPut('references', { table, data }); addLog('success', `✅ ${table}: ${data.length} record`); return data; } catch (err) { addLog('error', `❌ Gagal ${table}: ${err.message}`); throw err; } }
+        async function syncAllReferences() { for (const ref of REFERENCE_MAP) { try { await syncReference(ref.table, ref.endpoint, ref.search, ref.id); } catch {} } }
+
+        function enrichData(data) { const refs = state.references; if (!refs || !Object.keys(refs).length) return data; return data.map(row => { const enriched = { ...row }; const kodeMatkul = row['kode_matkul'] || row['kode matakuliah'] || row['Kode Matakuliah']; if (kodeMatkul && refs['mata_kuliah']) { const mk = refs['mata_kuliah'].find(m => String(m['kode_mata_kuliah']||'').trim().toLowerCase() === kodeMatkul.toString().trim().toLowerCase()); if (mk && !enriched['Nama Matakuliah'] && !enriched['nama_matkul']) enriched['Nama Matakuliah'] = mk['nama_mata_kuliah'] || mk['nm_mata_kuliah'] || ''; } const nuptk = row['nuptk'] || row['NUPTK']; if (nuptk && refs['dosen']) { const dsn = refs['dosen'].find(d => String(d['nuptk']||'').trim() === nuptk.toString().trim()); if (dsn && !enriched['nama_dosen'] && !enriched['Nama Dosen']) enriched['Nama Dosen'] = dsn['nama_dosen'] || dsn['nm_dosen'] || ''; } const nim = row['nim'] || row['NIM']; if (nim && refs['mahasiswa']) { const mhs = refs['mahasiswa'].find(m => String(m['nim']||'').trim() === nim.toString().trim()); if (mhs && !enriched['Nama Mahasiswa'] && !enriched['nama_mahasiswa']) enriched['Nama Mahasiswa'] = mhs['nama_mahasiswa'] || mhs['nm_mahasiswa'] || ''; } return enriched; }); }
+        function smartMap(value, table) { if (!value || !state.references[table]) return null; const refs = state.references[table]; const norm = value.toString().trim().toLowerCase(); const refDef = REFERENCE_MAP.find(r => r.table === table); const searchField = refDef?.search || 'nama'; const idField = refDef?.id || `id_${table}`; let match = refs.find(r => String(r[searchField]||'').trim().toLowerCase() === norm); if (match) return match[idField]; match = refs.find(r => String(r[searchField]||'').trim().toLowerCase().includes(norm)); if (match) { addLog('warning', `⚠️ Smart match: "${value}" → ${match[searchField]} (${idField}=${match[idField]})`); return match[idField]; } return null; }
+        function mapAllForeignKeys(row) { const mapped = {...row}; const rules = { 'agama': 'agama', 'nama_agama': 'agama', 'prodi': 'prodi', 'kode_prodi': 'prodi', 'nama_prodi': 'prodi', 'semester': 'semester', 'kode_semester': 'semester', 'matkul': 'mata_kuliah', 'kode_matkul': 'mata_kuliah', 'nama_matkul': 'mata_kuliah', 'dosen': 'dosen', 'nuptk': 'dosen', 'nidn': 'dosen', 'nama_dosen': 'dosen', 'wilayah': 'wilayah', 'kode_wilayah': 'wilayah', 'kurikulum': 'kurikulum', 'kode_kurikulum': 'kurikulum', 'nama_kurikulum': 'kurikulum', 'status_mahasiswa': 'status_mahasiswa', 'jalur_masuk': 'jalur_masuk', 'jenis_tinggal': 'jenis_tinggal', 'pekerjaan': 'pekerjaan', 'penghasilan': 'penghasilan', 'negara': 'negara' }; for (const [key, value] of Object.entries(row)) { const refTable = rules[key.toLowerCase()]; if (refTable && value) { const idVal = smartMap(value, refTable); if (idVal) { const idField = REFERENCE_MAP.find(r=>r.table===refTable)?.id || `id_${refTable}`; mapped[idField] = idVal; if (key !== idField) delete mapped[key]; } } } return { mapped, mappingLog: [] }; }
+
+        const UPSERT_MAP = { 'InsertBiodataMahasiswa': { getList: 'GetListMahasiswa', searchField: 'nim', idField: 'id_mahasiswa', updateEndpoint: 'UpdateBiodataMahasiswa' }, 'InsertMataKuliah': { getList: 'GetListMataKuliah', searchField: 'kode_mata_kuliah', idField: 'id_matkul', updateEndpoint: 'UpdateMataKuliah' }, 'InsertDosen': { getList: 'GetListDosen', searchField: 'nuptk', idField: 'id_dosen', updateEndpoint: 'UpdateDosen' } };
+        async function checkExistence(endpoint, data) { const config = UPSERT_MAP[endpoint]; if (!config) return null; const searchValue = data[config.searchField]; if (!searchValue) return null; try { const listRes = await apiCall(config.getList, { filter: `${config.searchField}='${searchValue}'` }); const found = listRes.data?.find(item => String(item[config.searchField]).trim() === String(searchValue).trim()); if (found) return { id: found[config.idField], endpoint: config.updateEndpoint }; } catch (err) { addLog('warning', `⚠️ Pengecekan duplikat gagal: ${err.message}`); } return null; }
+
+        async function resolveKelasMahasiswa(row) {
+            const kodeKelas = getVal(row, 'kode_kelas', 'nama_kelas', 'kelas', 'Kode Kelas', 'Nama Kelas', 'Kelas');
+            const nim = getVal(row, 'nim', 'NIM');
+            if (!kodeKelas || !nim) throw new Error('Kolom nama_kelas dan NIM wajib diisi');
+            const res = await apiCall('GetListKelasKuliah', { filter: `nama_kelas_kuliah='${kodeKelas}'` });
+            const kelasData = res.data || [];
+            if (kelasData.length === 0) throw new Error(`Kelas "${kodeKelas}" tidak ditemukan`);
+            const kelas = kelasData[0];
+            const idKelas = getVal(kelas, 'id_kelas_kuliah', 'id_kelas', 'id');
+            const mhsRes = await apiCall('GetListMahasiswa', { filter: `nim='${nim}'` });
+            const mhsData = mhsRes.data || [];
+            if (mhsData.length === 0) throw new Error(`Mahasiswa NIM "${nim}" tidak ditemukan`);
+            const mhs = mhsData[0];
+            const idMahasiswa = getVal(mhs, 'id_mahasiswa', 'id');
+            return { id_kelas: idKelas, id_mahasiswa: idMahasiswa };
+        }
+
+        async function ensurePesertaAndGetNilai(row) {
+            const kodeKelas = getVal(row, 'kode_kelas', 'nama_kelas', 'kelas', 'Kode Kelas', 'Nama Kelas', 'Kelas');
+            const nim = getVal(row, 'nim', 'NIM');
+            if (!kodeKelas || !nim) throw new Error('Kolom nama_kelas dan NIM wajib diisi');
+            const { id_kelas, id_mahasiswa } = await resolveKelasMahasiswa(row);
+            // Pastikan id_kelas adalah id_kelas_kuliah (sudah dari resolve)
+            const pesertaRes = await apiCall('GetPesertaKelasKuliah', { id_kelas_kuliah: id_kelas });
+            const sudahPeserta = pesertaRes.data?.some(p => p.id_mahasiswa === id_mahasiswa);
+            if (!sudahPeserta) await apiCall('InsertPesertaKelasKuliah', { id_kelas_kuliah: id_kelas, id_mahasiswa });
+            const nilaiRes = await apiCall('GetListNilaiPerkuliahanKelas', { filter: `id_kelas_kuliah='${id_kelas}' AND id_mahasiswa='${id_mahasiswa}'` });
+            const nilai = nilaiRes.data?.[0];
+            if (!nilai) throw new Error('Record nilai tidak ditemukan');
+            return { id_nilai: nilai.id_nilai, id_kelas, id_mahasiswa };
+        }
+
+        // ─── REFERENSI PERKULIAHAN (FILTER STRING) ──
+        window.loadKelasOptions = async () => {
+            const semesterId = $('#periodeRefSelect')?.value;
+            const kelasSelect = $('#kelasRefSelect');
+            if (!semesterId) return;
+            kelasSelect.innerHTML = '<option value="">Memuat...</option>';
+            try {
+                const filter = `id_semester='${semesterId}'`;
+                const res = await apiCall('GetListKelasKuliah', { filter });
+                const data = res.data || [];
+                const uniqueNames = [...new Set(data.map(k => getVal(k, 'nama_kelas_kuliah','nama_kelas','nm_kelas')))].filter(Boolean).sort();
+                kelasSelect.innerHTML = '<option value="">-- Pilih Nama Kelas --</option>' + uniqueNames.map(n => `<option value="${n}">${n}</option>`).join('');
+            } catch (e) { kelasSelect.innerHTML = '<option value="">Gagal memuat</option>'; showToast('Gagal memuat daftar kelas: '+e.message, 'error'); }
+        };
+
+        window.loadMatkulOptions = async () => {
+            const semesterId = $('#periodeRefSelect')?.value;
+            const namaKelas = $('#kelasRefSelect')?.value;
+            const matkulSelect = $('#matkulRefSelect');
+            if (!semesterId || !namaKelas) return;
+            matkulSelect.innerHTML = '<option value="">Memuat...</option>';
+            try {
+                const filter = `id_semester='${semesterId}' AND nama_kelas_kuliah='${namaKelas}'`;
+                const res = await apiCall('GetListKelasKuliah', { filter });
+                const data = res.data || [];
+                const kodeList = [...new Set(data.map(k => getVal(k, 'kode_mata_kuliah','kode_matkul')))].filter(Boolean).sort();
+                matkulSelect.innerHTML = '<option value="">-- Pilih Kode MK --</option>' + kodeList.map(k => `<option value="${k}">${k}</option>`).join('');
+            } catch (e) { matkulSelect.innerHTML = '<option value="">Gagal memuat</option>'; }
+        };
+
+        window.loadPerkuliahanRef = async () => {
+            const semesterId = $('#periodeRefSelect')?.value;
+            const namaKelas = $('#kelasRefSelect')?.value;
+            const kodeMK = $('#matkulRefSelect')?.value;
+            const listEl = $('#perkuliahanRefList');
+            if (!semesterId || !namaKelas || !kodeMK) { listEl.innerHTML = '<div class="text-xs text-surface-400">Lengkapi semua pilihan di atas.</div>'; return; }
+            listEl.innerHTML = '<span class="text-blue-600"><i class="fa-solid fa-spinner fa-spin"></i> Memuat...</span>';
+            try {
+                const filter = `id_semester='${semesterId}' AND nama_kelas_kuliah='${namaKelas}' AND kode_mata_kuliah='${kodeMK}'`;
+                const res = await apiCall('GetListKelasKuliah', { filter });
+                const kelasData = res.data || [];
+                if (kelasData.length === 0) { listEl.innerHTML = '<div class="text-xs text-surface-400">Kelas tidak ditemukan.</div>'; return; }
+                const target = kelasData[0];
+                const targetId = getVal(target, 'id_kelas_kuliah','id_kelas','id');
+                const nama = getVal(target, 'nama_kelas_kuliah','nama_kelas','nm_kelas');
+                const kode = getVal(target, 'kode_mata_kuliah','kode_matkul');
+                const matkul = getVal(target, 'nama_mata_kuliah','nm_matkul');
+                const dosen = getVal(target, 'nama_dosen','nm_dosen');
+                const sks = getVal(target, 'sks','sks_mk');
+                let html = `<h3 class="font-medium text-sm mt-2">Kelas Kuliah (${nama} | ${kode} | ${semesterId})</h3>`;
+                html += `<div class="text-xs">- ${matkul} | ${dosen} | ${sks} SKS</div>`;
+                listEl.innerHTML = html;
+                // Panggil detail secara asinkron
+                loadDetailAsync(targetId, nama, kode, semesterId, listEl);
+            } catch (err) { listEl.innerHTML = `<span class="text-red-500">❌ Gagal: ${err.message}</span>`; }
+        };
+
+        // ─── Fungsi loadDetailAsync yang telah diperbaiki ──
+        async function loadDetailAsync(targetId, nama, kode, semesterId, listEl) {
+            let html = listEl.innerHTML;
+
+            // 1. Detail Kelas
+            try {
+                const detailRes = await apiCall('GetDetailKelasKuliah', { id_kelas_kuliah: targetId });
+                const detail = detailRes.data?.[0];
+                if (detail) {
+                    const tm = getVal(detail, 'sks_tm','0');
+                    const prak = getVal(detail, 'sks_prak','0');
+                    const prakLap = getVal(detail, 'sks_prak_lap','0');
+                    const sim = getVal(detail, 'sks_sim','0');
+                    html += `<div class="text-xs text-surface-500 mt-1">SKS: TM ${tm}, Prak ${prak}, Prak.Lap ${prakLap}, Sim ${sim}</div>`;
+                }
+            } catch (err) {
+                html += `<div class="text-xs text-red-500">Gagal memuat detail kelas: ${err.message}</div>`;
+            }
+
+            // 2. Peserta Kelas – filter hanya dengan id_kelas_kuliah
+            try {
+                const filterPeserta = `id_kelas_kuliah='${targetId}'`;
+                const pesertaRes = await apiCall('GetPesertaKelasKuliah', { filter: filterPeserta });
+                const pesertaData = pesertaRes.data || [];
+                html += `<div class="text-xs mt-1">Jumlah Mahasiswa: ${pesertaData.length}</div>`;
+                if (pesertaData.length > 0) {
+                    html += `<div class="text-xs mt-1 font-medium">Daftar Peserta (5 pertama):</div>`;
+                    pesertaData.slice(0,5).forEach(p => {
+                        const nim = getVal(p, 'nim','NIM');
+                        const namaMhs = getVal(p, 'nama_mahasiswa','nm_mahasiswa','nama');
+                        html += `<div class="text-xs">- ${nim} ${namaMhs}</div>`;
+                    });
+                    if (pesertaData.length > 5) html += `<div class="text-xs text-surface-400">... dan ${pesertaData.length-5} lainnya</div>`;
+                }
+            } catch (err) {
+                html += `<div class="text-xs text-red-500">Gagal memuat peserta: ${err.message}</div>`;
+            }
+
+            // 3. Dosen Pengajar – gunakan id_kelas_kuliah
+            try {
+                const filterDosen = `id_kelas_kuliah='${targetId}'`;
+                const dosenRes = await apiCall('GetDosenPengajarKelasKuliah', { filter: filterDosen });
+                const dosenData = dosenRes.data || [];
+                html += `<h3 class="font-medium text-sm mt-2">Dosen Pengajar Kelas</h3>`;
+                if (dosenData.length > 0) {
+                    html += dosenData.slice(0,5).map(d => {
+                        const nm = getVal(d, 'nama_dosen','nm_dosen','nama');
+                        const nuptk = getVal(d, 'nuptk','NUPTK');
+                        return `<div class="text-xs">- ${nm} (${nuptk})</div>`;
+                    }).join('');
+                } else {
+                    html += '<div class="text-xs">Tidak ada dosen pengajar</div>';
+                }
+            } catch (err) {
+                html += `<div class="text-xs text-red-500">Gagal memuat dosen pengajar: ${err.message}</div>`;
+            }
+
+            // 4. Nilai Perkuliahan – filter yang benar
+            try {
+                const filterNilai = `id_kelas_kuliah='${targetId}'`;
+                const nilaiRes = await apiCall('GetListNilaiPerkuliahanKelas', { filter: filterNilai });
+                const nilaiData = nilaiRes.data || [];
+                html += `<h3 class="font-medium text-sm mt-2">Nilai Perkuliahan</h3>`;
+                if (nilaiData.length > 0) {
+                    html += nilaiData.slice(0,10).map(n => {
+                        const nim = getVal(n, 'nim','NIM');
+                        const namaMhs = getVal(n, 'nama_mahasiswa','nm_mahasiswa','nama');
+                        const nilai = getVal(n, 'nilai_huruf','nilai','grade');
+                        return `<div class="text-xs">- ${nim} | ${namaMhs} | ${nilai}</div>`;
+                    }).join('');
+                    if (nilaiData.length > 10) html += `<div class="text-xs text-surface-400">... dan ${nilaiData.length-10} lainnya</div>`;
+                } else {
+                    html += '<div class="text-xs">Belum ada nilai</div>';
+                }
+            } catch (err) {
+                html += `<div class="text-xs text-red-500">Gagal memuat nilai: ${err.message}</div>`;
+            }
+
+            listEl.innerHTML = html;
+        }
+
+        // ─── UI & Navigation ─────────────────────
+        function navigateTo(page) { state.currentPage = page; $$('.nav-item').forEach(el => el.classList.remove('active','bg-primary-50','dark:bg-primary-900/30')); $(`.nav-item[data-page="${page}"]`)?.classList.add('active','bg-primary-50','dark:bg-primary-900/30'); $('#breadcrumb').innerHTML = `<span>${page.charAt(0).toUpperCase()+page.slice(1)}</span>`; renderPage(page); if (page === 'reference') { $('#periodeRefSelect')?.addEventListener('change', window.loadKelasOptions); } }
+
+        function renderPage(page) {
+            const pages = {
+                dashboard: () => `<div class="space-y-6"><h1 class="text-2xl font-bold">Dashboard</h1><div class="grid grid-cols-4 gap-4"><div class="bg-white dark:bg-surface-800 p-5 rounded-xl shadow"><p class="text-sm text-surface-400">Dictionary</p><p class="text-2xl font-bold">${Object.keys(state.dictionary).length}</p></div><div class="bg-white dark:bg-surface-800 p-5 rounded-xl shadow"><p class="text-sm text-surface-400">Referensi</p><p class="text-2xl font-bold">${Object.keys(state.references).length}</p></div></div><div class="grid grid-cols-4 gap-3 mt-4"><button onclick="window.appNavigate('config')" class="p-4 border rounded-xl hover:bg-primary-50"><i class="fa-solid fa-gear block mb-2 text-xl"></i>Konfigurasi</button><button onclick="window.appNavigate('template')" class="p-4 border rounded-xl hover:bg-primary-50"><i class="fa-solid fa-file-excel block mb-2 text-xl text-green-600"></i>Template</button><button onclick="window.appNavigate('import')" class="p-4 border rounded-xl hover:bg-primary-50"><i class="fa-solid fa-upload block mb-2 text-xl text-blue-600"></i>Import</button><button onclick="window.appRefreshAll()" class="p-4 border rounded-xl hover:bg-primary-50"><i class="fa-solid fa-arrows-rotate block mb-2 text-xl"></i>Refresh Metadata</button><button onclick="window.appClearCache()" class="p-4 border rounded-xl hover:bg-red-50 text-red-600"><i class="fa-solid fa-trash block mb-2 text-xl"></i>Hapus Cache</button></div></div>`,
+                config: () => `<div class="max-w-2xl space-y-6"><h1 class="text-2xl font-bold">Konfigurasi</h1><div class="bg-white dark:bg-surface-800 p-6 rounded-xl shadow space-y-4"><div><label class="block text-sm font-medium mb-1">URL Neo Feeder</label><input id="cfgUrl" value="${escapeHtml(state.config.url || 'http://localhost:3003/ws/live2.php')}" class="w-full px-4 py-2.5 border rounded-lg"></div><div class="grid grid-cols-2 gap-4"><div><label class="block text-sm font-medium mb-1">Username</label><input id="cfgUsername" value="${escapeHtml(state.config.username)}" class="w-full px-4 py-2.5 border rounded-lg"></div><div><label class="block text-sm font-medium mb-1">Password</label><input type="password" id="cfgPassword" value="${escapeHtml(state.config.password)}" class="w-full px-4 py-2.5 border rounded-lg"></div></div><div class="flex gap-3"><button onclick="window.appSaveConfig()" class="px-6 py-2.5 bg-primary-600 text-white rounded-lg"><i class="fa-solid fa-floppy-disk mr-2"></i>Simpan</button><button onclick="window.appTestConnection()" class="px-6 py-2.5 bg-green-600 text-white rounded-lg"><i class="fa-solid fa-vial mr-2"></i>Test Koneksi</button><button onclick="window.appRefreshAll()" class="px-6 py-2.5 bg-purple-600 text-white rounded-lg"><i class="fa-solid fa-cloud-arrow-down mr-2"></i>Refresh Metadata</button><button onclick="window.appClearCache()" class="px-6 py-2.5 bg-red-500 text-white rounded-lg"><i class="fa-solid fa-trash mr-2"></i>Hapus Cache</button></div></div></div>`,
+                template: () => { const avail = COMMON_ENDPOINTS.filter(e => state.dictionary[e] && extractFields(state.dictionary[e].request, 'record').length > 0); let opts = avail.map(e => `<option value="${e}">✅ ${e}</option>`).join(''); if (!avail.length) opts = '<option disabled>-- Tidak ada dictionary dengan request field. Refresh Metadata --</option>'; return `<div class="space-y-6"><h1 class="text-2xl font-bold">Generate Template</h1><div class="bg-white dark:bg-surface-800 p-6 rounded-xl shadow"><select id="templateEndpoint" class="w-full max-w-md px-4 py-2.5 border rounded-lg">${opts}</select><div class="flex gap-3 mt-4"><button onclick="window.appGenerateTemplate()" class="px-6 py-2.5 bg-green-600 text-white rounded-lg" ${!avail.length?'disabled':''}><i class="fa-solid fa-download mr-2"></i>Download</button><button onclick="window.appRefreshAll()" class="px-6 py-2.5 bg-purple-600 text-white rounded-lg"><i class="fa-solid fa-cloud-arrow-down mr-2"></i>Refresh Metadata</button></div></div></div>`; },
+                import: () => { const importEndpoints = COMMON_ENDPOINTS.filter(e => state.dictionary[e] && extractFields(state.dictionary[e].request, 'record').length > 0); const opts = importEndpoints.map(e => `<option value="${e}">${e}</option>`).join(''); return `<div class="space-y-6"><h1 class="text-2xl font-bold">Import Data</h1><div class="bg-white dark:bg-surface-800 p-6 rounded-xl shadow"><div class="grid grid-cols-2 gap-4 mb-4"><div><label class="block text-sm font-medium mb-2">Pilih Endpoint Tujuan</label><select id="importEndpoint" class="w-full px-4 py-2.5 border rounded-lg"><option value="">Auto-detect</option>${opts}</select></div><div><label class="block text-sm font-medium mb-2">Mode Import</label><select id="importMode" class="w-full px-4 py-2.5 border rounded-lg"><option value="insert">Insert Only</option><option value="upsert">Upsert (Insert/Update)</option></select></div></div><div class="drop-zone rounded-xl p-10 text-center" id="dropZone"><i class="fa-solid fa-cloud-arrow-up text-4xl text-surface-300 mb-3 block"></i><p class="text-surface-500">Drag & drop file Excel di sini</p><label class="mt-4 px-6 py-2.5 bg-primary-600 text-white rounded-lg cursor-pointer inline-block"><i class="fa-solid fa-folder-open mr-2"></i>Pilih File<input type="file" id="fileInput" accept=".xlsx,.xls" class="hidden" onchange="window.appHandleFile(this)"></label></div><div id="uploadStatus" class="text-sm mt-3"></div></div><div id="previewSection" class="hidden space-y-4"><div class="bg-white dark:bg-surface-800 p-6 rounded-xl shadow"><h2 class="font-semibold text-lg mb-2">Preview</h2><div class="overflow-x-auto max-h-96 border rounded-lg" id="previewTable"></div><div class="flex gap-2 mt-4"><button onclick="window.appDryRun()" class="px-4 py-2 bg-yellow-500 text-white rounded-lg"><i class="fa-solid fa-flask mr-1"></i>Dry Run</button><button onclick="window.appStartImport()" class="px-4 py-2 bg-green-600 text-white rounded-lg"><i class="fa-solid fa-play mr-1"></i>Import</button></div></div></div><div id="progressSection" class="hidden bg-white dark:bg-surface-800 p-6 rounded-xl shadow space-y-4"><h2 class="font-semibold text-lg">Progress</h2><div class="w-full bg-surface-200 rounded-full h-4"><div id="progressBar" class="bg-primary-600 h-full rounded-full text-white text-xs flex items-center justify-center" style="width:0%">0%</div></div><div class="grid grid-cols-4 gap-3 text-sm"><div>Baris: <span id="progCurrent">0/0</span></div><div>Berhasil: <span id="progSuccess" class="text-green-600">0</span></div><div>Gagal: <span id="progFailed" class="text-red-500">0</span></div><div>Estimasi: <span id="progEta">-</span></div></div><button onclick="window.appCancelImport()" class="px-4 py-2 bg-red-500 text-white rounded-lg"><i class="fa-solid fa-stop mr-1"></i>Batalkan</button></div></div>`; },
+                history: () => `<div class="space-y-6"><h1 class="text-2xl font-bold">Riwayat</h1><div class="bg-white dark:bg-surface-800 p-6 rounded-xl shadow" id="historyList">Memuat...</div></div>`,
+                reference: () => {
+                    const semesterList = state.references['semester'] || [];
+                    const activeSemester = semesterList.filter(s => s.a_periode_aktif == 1);
+                    const periodeOpts = activeSemester.map(s => `<option value="${s.id_semester}">${s.nama_semester || s.id_semester}</option>`).join('');
+                    if (!periodeOpts) return `<div class="space-y-6"><h1 class="text-2xl font-bold">Referensi</h1><div class="bg-white dark:bg-surface-800 p-4 rounded-xl shadow">Tidak ada periode aktif.</div></div>`;
+                    return `<div class="space-y-6"><h1 class="text-2xl font-bold">Referensi</h1><div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    <div class="bg-white dark:bg-surface-800 p-4 rounded-xl shadow"><h2 class="font-semibold mb-2">Referensi Umum</h2><div class="grid grid-cols-2 gap-2">${Object.keys(state.references).filter(t => !['kelas_kuliah','peserta_kelas','dosen_pengajar','nilai_perkuliahan'].includes(t)).map(t=>`<div class="p-2 border rounded cursor-pointer hover:bg-primary-50" onclick="window.appViewRef('${t}')">${t} (${state.references[t]?.length||0})</div>`).join('')}</div></div>
+                    <div class="bg-white dark:bg-surface-800 p-4 rounded-xl shadow"><h2 class="font-semibold mb-2">Data Perkuliahan (Periode Aktif)</h2>
+                      <div class="flex flex-col gap-2 mb-2">
+                        <select id="periodeRefSelect" class="px-3 py-2 border rounded-lg">${periodeOpts}</select>
+                        <select id="kelasRefSelect" class="px-3 py-2 border rounded-lg" onchange="window.loadMatkulOptions()"><option value="">-- Pilih Nama Kelas --</option></select>
+                        <select id="matkulRefSelect" class="px-3 py-2 border rounded-lg"><option value="">-- Pilih Kode MK --</option></select>
+                        <button onclick="window.loadPerkuliahanRef()" class="px-4 py-2 bg-primary-600 text-white rounded-lg">Tampilkan Detail</button>
+                      </div>
+                      <div class="space-y-1 max-h-80 overflow-y-auto" id="perkuliahanRefList"><p class="text-xs text-surface-400">Pilih periode, kelas, dan kode MK untuk melihat detail.</p></div>
+                    </div>
+                    </div></div>`;
+                },
+            };
+            $('#pageContent').innerHTML = pages[page] ? pages[page]() : '';
+            if (page === 'import') { setupDropZone(); $('#importMode').addEventListener('change', e => state.importMode = e.target.value); }
+            if (page === 'history') loadHistory();
+        }
+
+        function setupDropZone() { const dz = $('#dropZone'); if (!dz) return; dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('active'); }); dz.addEventListener('dragleave', () => dz.classList.remove('active')); dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('active'); handleFile(e.dataTransfer.files[0]); }); }
+        async function handleFile(file) { if (!file) return; $('#uploadStatus').innerHTML = '<span class="text-blue-600"><i class="fa-solid fa-spinner fa-spin"></i> Membaca...</span>'; try { const { data, rowCount } = await readExcel(file); if (rowCount === 0) { $('#uploadStatus').innerHTML = '<span class="text-red-500">❌ File Excel kosong atau tidak ada data di sheet pertama.</span>'; showToast('File Excel kosong', 'error'); return; } const enriched = enrichData(data); window._uploadedData = enriched; const manualEp = $('#importEndpoint')?.value; window._selectedEndpoint = manualEp || detectEndpoint(file.name); if (!state.dictionary[window._selectedEndpoint] || extractFields(state.dictionary[window._selectedEndpoint].request, 'record').length === 0) { $('#uploadStatus').innerHTML = `<span class="text-red-500">❌ Dictionary untuk ${window._selectedEndpoint} tidak valid.</span>`; showToast('Dictionary tidak valid', 'error'); return; } $('#previewTable').innerHTML = renderPreview(enriched); $('#previewSection').classList.remove('hidden'); const val = validateData(enriched, window._selectedEndpoint); $('#uploadStatus').innerHTML = `<span class="text-green-600">✅ ${rowCount} baris, Endpoint: ${window._selectedEndpoint}, Error: ${val.totalErrors||0}</span>`; addLog('success', `📂 File ${file.name}: ${rowCount} baris`); } catch (err) { $('#uploadStatus').innerHTML = `<span class="text-red-500">❌ ${err.message}</span>`; } }
+        function detectEndpoint(filename) { const n = filename.toLowerCase(); if (n.includes('nilai')) return 'UpdateNilaiPerkuliahanKelas'; if (n.includes('mahasiswa') && n.includes('riwayat')) return 'InsertRiwayatPendidikanMahasiswa'; if (n.includes('mahasiswa') && n.includes('lulus')) return 'InsertMahasiswaLulusDO'; if (n.includes('mahasiswa')) return 'InsertBiodataMahasiswa'; if (n.includes('matkul')) return 'InsertMataKuliah'; if (n.includes('kelas') && n.includes('peserta')) return 'InsertPesertaKelasKuliah'; if (n.includes('kelas') && n.includes('dosen')) return 'InsertDosenPengajarKelasKuliah'; if (n.includes('kelas')) return 'InsertKelasKuliah'; if (n.includes('dosen')) return 'InsertDosen'; if (n.includes('kurikulum')) return 'InsertKurikulum'; if (n.includes('prestasi')) return 'InsertPrestasiMahasiswa'; if (n.includes('aktivitas')) return 'InsertAktivitasMahasiswa'; return 'InsertBiodataMahasiswa'; }
+        async function loadHistory() { if (!db) return; const list = await dbGetAll('history'); const recent = list.slice(-30).reverse(); $('#historyList').innerHTML = recent.length ? recent.map(h => `<div class="flex items-center gap-3 p-3 border rounded-lg text-sm ${h.status==='failed'?'bg-red-50':'bg-green-50'}"><i class="fa-solid ${h.status==='failed'?'fa-circle-xmark text-red-500':'fa-circle-check text-green-500'}"></i><div class="flex-1"><span class="font-medium">${h.endpoint}</span> Baris ${h.row} <span class="text-xs text-surface-400">${new Date(h.date).toLocaleString('id-ID')}</span></div>${h.status==='failed'?`<button onclick="window.appRetry(${h.id})" class="px-2 py-1 bg-orange-500 text-white text-xs rounded">Retry</button>`:''}</div>`).join('') : '<p class="text-surface-400">Belum ada riwayat</p>'; }
+        async function retryRecord(id) { if (!db) return; const rec = await dbGet('history', id); if (!rec) return; try { const { mapped } = mapAllForeignKeys(rec.data); const res = await apiCall(rec.endpoint, mapped); rec.status = 'success'; rec.response = res; rec.date = new Date().toISOString(); await dbPut('history', rec); showToast('Retry berhasil', 'success'); loadHistory(); } catch (err) { showToast('Retry gagal: '+err.message, 'error'); } }
+        function generateTemplate(endpoint) { const dict = state.dictionary[endpoint]; if (!dict) throw new Error('Dictionary tidak tersedia'); const fields = extractFields(dict.request, 'record').filter(f => !f.name.startsWith('id_')); if (fields.length === 0) throw new Error('Endpoint ini tidak memiliki field input'); const wb = XLSX.utils.book_new(); const headers = fields.map(f => f.required ? `${f.name} (*)` : f.name); const ws = XLSX.utils.aoa_to_sheet([headers]); ws['!cols'] = fields.map(()=>({wch:25})); XLSX.utils.book_append_sheet(wb, ws, 'DATA'); const readme = [['PANDUAN'],[''],['Kolom bertanda (*) wajib diisi.']]; fields.forEach(f => readme.push([f.name, f.type, f.description])); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(readme), 'README'); const refData = [['Tabel','Kode/Nama','ID']]; for (const [table, recs] of Object.entries(state.references)) { if (!recs?.length) continue; const idKey = REFERENCE_MAP.find(r=>r.table===table)?.id || `id_${table}`; const searchKey = REFERENCE_MAP.find(r=>r.table===table)?.search || 'nama'; recs.slice(0,100).forEach(r => refData.push([table, r[searchKey]||'', r[idKey]||''])); } XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(refData), 'REFERENSI'); return wb; }
+        function downloadWorkbook(wb, filename) { const out = XLSX.write(wb, { bookType:'xlsx', type:'array' }); const blob = new Blob([out], { type:'application/octet-stream' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename; a.click(); }
+        function readExcel(file) { return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = (e) => { try { const wb = XLSX.read(new Uint8Array(e.target.result), { type:'array' }); const data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval:'' }); const cleaned = data.map(row => { const obj = {}; for (const [k,v] of Object.entries(row)) obj[k.replace(/\s*\(\*\)\s*/,'').trim()] = v; return obj; }); resolve({ data: cleaned, rowCount: cleaned.length }); } catch (err) { reject(err); } }; reader.onerror = () => reject(new Error('Gagal membaca file')); reader.readAsArrayBuffer(file); }); }
+        function renderPreview(data, max=50) { if (!data.length) return '<p class="text-center py-4 text-surface-400">Tidak ada data</p>'; const headers = Object.keys(data[0]); let html = '<table class="w-full text-xs border"><thead><tr><th class="border p-1">#</th>'; headers.forEach(h => html += `<th class="border p-1">${escapeHtml(h)}</th>`); html += '</tr></thead><tbody>'; data.slice(0,max).forEach((row,i) => { html += '<tr>'; html += `<td class="border p-1 text-center">${i+1}</td>`; headers.forEach(h => html += `<td class="border p-1 max-w-[150px] truncate">${escapeHtml(String(row[h]||'').substring(0,30))}</td>`); html += '</tr>'; }); if (data.length > max) html += `<tr><td colspan="${headers.length+1}" class="text-center py-2 text-surface-400">... dan ${data.length-max} baris lainnya</td></tr>`; html += '</tbody></table>'; return html; }
+        function validateData(data, endpoint) { const dict = state.dictionary[endpoint]; const errors = []; if (!dict) return { errors: [], valid: true, totalErrors: 0 }; const fields = extractFields(dict.request, 'record').filter(f => f.required); fields.forEach(f => { data.forEach((row,i) => { if (!row[f.name] || String(row[f.name]).trim() === '') errors.push({ row: i+2, field: f.name, message: `Kolom wajib "${f.name}" kosong` }); }); }); return { errors, valid: errors.length === 0, totalErrors: errors.length }; }
+        async function startImport(data, endpoint, dryRun = false) { if (state.isImporting) throw new Error('Import sedang berjalan'); if (!state.dictionary[endpoint]) throw new Error(`Dictionary ${endpoint} tidak ditemukan. Refresh Metadata.`); const fields = extractFields(state.dictionary[endpoint].request, 'record'); if (fields.length === 0) throw new Error('Endpoint ini tidak memiliki field request'); if (!data || data.length === 0) throw new Error('Data kosong'); state.isImporting = true; state.importAbortController = new AbortController(); state.importStats = { total: data.length, current: 0, success: 0, failed: 0, startTime: Date.now() }; $('#progressSection')?.classList.remove('hidden'); updateProgressUI(); addLog('info', `🚀 ${dryRun?'DRY RUN':'Import'} ${data.length} record ke ${endpoint} (Mode: ${state.importMode})`); const failedRecs = []; for (let i = 0; i < data.length; i++) { if (state.importAbortController.signal.aborted) { addLog('warning','⚠️ Dibatalkan'); break; } state.importStats.current = i+1; const row = data[i]; addLog('info', `📝 Baris ${i+1}/${data.length}`); try { let { mapped } = mapAllForeignKeys(row); let targetEndpoint = endpoint; if (endpoint === 'UpdateNilaiPerkuliahanKelas') { const info = await ensurePesertaAndGetNilai(mapped); mapped.id_nilai = info.id_nilai; mapped.id_kelas = info.id_kelas; mapped.id_mahasiswa = info.id_mahasiswa; } else if (endpoint === 'InsertPesertaKelasKuliah') { const { id_kelas, id_mahasiswa } = await resolveKelasMahasiswa(mapped); mapped = { id_kelas, id_mahasiswa }; } if (state.importMode === 'upsert' && UPSERT_MAP[endpoint]) { const exist = await checkExistence(endpoint, mapped); if (exist) { targetEndpoint = exist.endpoint; mapped[exist.idField] = exist.id; addLog('info', `🔄 Data sudah ada, akan di-update dengan ${targetEndpoint}`); } } if (dryRun) { state.importStats.success++; addLog('success', `✅ [DRY RUN] Baris ${i+1} valid`); } else { const res = await apiCall(targetEndpoint, mapped); state.importStats.success++; addLog('success', `✅ Baris ${i+1} berhasil`); if (db) dbPut('history', { date: new Date().toISOString(), endpoint: targetEndpoint, row: i+1, data: mapped, response: res, status:'success' }).catch(()=>{}); } } catch (err) { state.importStats.failed++; addLog('error', `❌ Baris ${i+1}: ${err.message}`); failedRecs.push({ row: i+1, data: row, error: err.message }); if (db && !dryRun) dbPut('history', { date: new Date().toISOString(), endpoint, row: i+1, data: row, error: err.message, status:'failed' }).catch(()=>{}); } updateProgressUI(); if (!dryRun) await new Promise(r => setTimeout(r, 80)); } state.isImporting = false; const elapsed = ((Date.now()-state.importStats.startTime)/1000).toFixed(1); addLog('info', `🏁 Selesai: ${state.importStats.success} berhasil, ${state.importStats.failed} gagal (${elapsed}s)`); showToast(`Import selesai: ${state.importStats.success}/${state.importStats.total}`, state.importStats.failed>0?'warning':'success'); return { stats: state.importStats, failedRecs }; }
+        function cancelImport() { if (state.importAbortController) { state.importAbortController.abort(); state.isImporting = false; } }
+        function updateProgressUI() { const s = state.importStats; if (!s) return; const pct = s.total>0 ? Math.round((s.current/s.total)*100) : 0; $('#progressBar').style.width = `${pct}%`; $('#progressBar').textContent = `${pct}%`; $('#progCurrent').textContent = `${s.current}/${s.total}`; $('#progSuccess').textContent = s.success; $('#progFailed').textContent = s.failed; const elapsed = (Date.now()-s.startTime)/1000; const rate = s.current/elapsed; const eta = rate>0 ? (s.total-s.current)/rate : 0; $('#progEta').textContent = eta>60 ? `${Math.ceil(eta/60)} mnt` : `${Math.ceil(eta)} dtk`; }
+
+        // Global Functions
+        window.appNavigate = navigateTo;
+        window.appSaveConfig = () => { state.config.url = $('#cfgUrl')?.value?.trim() || ''; state.config.username = $('#cfgUsername')?.value?.trim() || ''; state.config.password = $('#cfgPassword')?.value?.trim() || ''; if (!state.config.url) { showToast('URL wajib diisi','error'); return; } lsSet('config', state.config); state.token = null; lsRemove('token'); showToast('Konfigurasi disimpan','success'); addLog('info','⚙️ Konfigurasi diperbarui'); };
+        window.appTestConnection = async () => { try { await getToken(); showToast('Koneksi berhasil','success'); } catch (err) { showToast('Gagal: '+err.message,'error'); } };
+        window.appRefreshAll = async () => { try { if (!state.token) await getToken(); await downloadAllDictionaries(); await syncAllReferences(); showToast('Metadata berhasil di-refresh','success'); navigateTo(state.currentPage); } catch (err) { showToast('Error: '+err.message,'error'); } };
+        window.appClearCache = async () => { if (!confirm('Hapus semua data cache (dictionary, referensi, log, konfigurasi)?')) return; try { if (db) { await Promise.all(['dictionary','references','logs','history'].map(s => dbClear(s))); } clearAllStorage(); state.dictionary = {}; state.references = {}; state.token = null; state.config = { url: '', username: '', password: '', timeout: 30000 }; addLog('info', '🗑️ Semua cache dan data lokal telah dihapus'); showToast('Cache berhasil dihapus. Silakan isi ulang konfigurasi.', 'success'); navigateTo('config'); } catch (err) { showToast('Gagal menghapus cache: '+err.message, 'error'); } };
+        window.appGenerateTemplate = () => { const ep = $('#templateEndpoint')?.value; if (!ep) { showToast('Pilih endpoint','warning'); return; } try { const wb = generateTemplate(ep); downloadWorkbook(wb, `${ep}_Template.xlsx`); showToast('Template diunduh','success'); } catch (err) { showToast(err.message,'error'); } };
+        window.appHandleFile = (input) => { if (input.files[0]) handleFile(input.files[0]); };
+        window.appDryRun = async () => { if (!window._uploadedData) { showToast('Upload file dulu','warning'); return; } try { await startImport(window._uploadedData, window._selectedEndpoint, true); } catch (err) { showToast(err.message,'error'); } };
+        window.appStartImport = async () => { if (!window._uploadedData) { showToast('Upload file dulu','warning'); return; } if (state.isImporting) { showToast('Import sedang berjalan','warning'); return; } try { await startImport(window._uploadedData, window._selectedEndpoint, false); } catch (err) { showToast(err.message,'error'); } };
+        window.appCancelImport = () => cancelImport();
+        window.appViewRef = (table) => { const refs = state.references[table] || []; const headers = refs.length>0 ? Object.keys(refs[0]) : []; let html = `<h3 class="font-semibold mb-2">${table} (${refs.length} record)</h3><div class="overflow-x-auto max-h-96"><table class="w-full text-xs border"><thead><tr>${headers.map(h=>`<th class="border p-1">${h}</th>`).join('')}</tr></thead><tbody>`; refs.slice(0,200).forEach(r => html += `<tr>${headers.map(h=>`<td class="border p-1 max-w-[120px] truncate">${escapeHtml(String(r[h]||'').substring(0,25))}</td>`).join('')}</tr>`); html += '</tbody></table></div>'; openModal(`Referensi: ${table}`, html); };
+        window.appRetry = async (id) => { await retryRecord(id); };
+
+        // Init
+        async function init() {
+            addLog('info','🚀 Neo Feeder Importer v2.25');
+            await openDB();
+            (await dbGetAll('dictionary')).forEach(d => state.dictionary[d.endpoint] = d.data);
+            (await dbGetAll('references')).forEach(r => state.references[r.table] = r.data);
+            const cfg = lsGet('config'); if (cfg) state.config = {...state.config, ...cfg};
+            const tok = lsGet('token'); if (tok) { state.token = tok; $('#connectionLabel').textContent = 'Terhubung (cached)'; }
+            state.importMode = lsGet('importMode') || 'insert';
+            navigateTo('dashboard');
+            $$('.nav-item').forEach(el => el.addEventListener('click', e => { e.preventDefault(); navigateTo(el.dataset.page); }));
+            document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+            addLog('success','✅ Aplikasi siap');
+        }
+        init().catch(console.error);
+
+        window.toggleSidebar = () => $('#sidebar').classList.toggle('-translate-x-full');
+        window.toggleLogPanel = () => { const p = $('#logPanel'); p.style.height = p.style.height === '40px' ? '250px' : '40px'; };
+        window.clearLogs = clearLogs;
+        window.downloadLogs = downloadLogs;
+        window.closeModal = closeModal;
+        window.showToast = showToast;
+    </script>
+</body>
+</html>

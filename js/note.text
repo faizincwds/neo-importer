@@ -1,0 +1,45 @@
+📁 Cetak Biru untuk Method Baru
+Setiap kali menambahkan method, ikuti template ini agar struktur tetap rapi.
+
+Di api.js
+javascript
+async namaMethod(record) {
+  // Jika perlu parameter spesifik:
+  return this.callSafe('NamaMethod', { key: { ... }, record: { ... } });
+  // Atau jika hanya record:
+  return this.callSafe('NamaMethod', { record: JSON.stringify(record) });
+}
+
+
+Di METHOD_CONFIG
+javascript
+NamaMethod: {
+  targetFields: [...],
+  requiredFields: [...],
+  transformFn: function(row) {
+    const payload = { /* hanya field yang dibutuhkan API */ };
+    return {
+      ...payload,
+      _display: { /* info untuk log */ }
+    };
+  },
+  performLookup: async function(row, lookupEngine) {
+    // 1. Cari semester
+    // 2. Cari data pendukung (MK, prodi, dosen, mahasiswa)
+    // 3. Cari kelas jika diperlukan (pakai lookupDetailKelasKuliah)
+    // 4. Validasi field wajib
+  }
+}
+
+
+Di INSERT_METHODS
+Tambahkan nama method ke array.
+
+📝 Catatan Penting
+Jangan ubah lookupEngine.js kecuali menambah method baru dengan pola yang sama.
+
+Jangan ubah importProcess.js — sudah stabil untuk semua jenis operasi.
+
+Jika muncul error [108] Parameter yang dikirim tidak valid, gunakan console.log(JSON.stringify(payload)) sebelum request, lalu bandingkan dengan dictionary.
+
+Jika InsertPesertaKelasKuliah suatu saat diperbaiki, konfigurasinya sudah siap di METHOD_CONFIG, tinggal diaktifkan kembali di INSERT_METHODS.
