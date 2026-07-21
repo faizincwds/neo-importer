@@ -38,29 +38,29 @@ php -S localhost:8000
 ```
 
 ### Struktur Folder
-
-neo-importer/
-├── index.html              # Entry point
-├── README.md               # Dokumentasi
-├── assets/
-│   ├── css/
-│   │   └── style.css       # Custom styles
-│   ├── js/
-│   │   ├── app.js          # Main application
-│   │   ├── api.js          # API client
-│   │   ├── auth.js         # Authentication
-│   │   ├── router.js       # SPA Router
-│   │   ├── excel.js        # Excel handler (SheetJS)
-│   │   ├── mapping.js      # Auto mapping engine
-│   │   ├── validator.js    # Data validator
-│   │   ├── importer.js     # Import engine
-│   │   ├── logger.js       # Logger system
-│   │   └── storage.js      # LocalStorage manager
-│   └── vendor/             # Third-party libraries
-└── pages/                  # Page templates (optional)
-    ├── dashboard.html
-    ├── list.html
-    ├── insert.html
-    ├── update.html
-    ├── delete.html
-    └── referensi.html
+```bash
+neo-importer
+ ┣ css
+ ┃ ┗ style.css
+ ┣ dist
+ ┃ ┗ xlsx.full.min.js
+ ┣ js
+ ┃ ┣ api.js
+ ┃ ┣ app.js
+ ┃ ┣ auth.js
+ ┃ ┣ config.js
+ ┃ ┣ dashboard.js
+ ┃ ┣ gridEditor.js
+ ┃ ┣ importProcess.js
+ ┃ ┣ insertWizard.js
+ ┃ ┣ logger.js
+ ┃ ┣ lookupEngine.js
+ ┃ ┣ mappingEngine.js
+ ┃ ┣ note.text
+ ┃ ┣ referensi.js
+ ┃ ┣ utils.js
+ ┃ ┣ validator.js
+ ┃ ┗ viewManager.js
+ ┣ index.html
+ ┣ README.md
+```
