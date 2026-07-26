@@ -12,7 +12,7 @@ export const STORAGE_KEYS = {
 export const IMPORT_DEFAULTS = {
   batchSize: 5, // (jumlah baris per batch)
   delay: 500, // (jeda antar baris dalam milidetik)
-  retry: 1, // (jumlah percobaan ulang jika gagal)
+  retry: 0, // (jumlah percobaan ulang jika gagal)
   continueOnError: true,
   skipInvalid: true,
   timeout: 30000,

@@ -430,7 +430,7 @@ async lookupKomponenEvaluasiByIdUrut(kelasId, jenisEvaluasi, nomorUrut) {
     if (this.cache[key]) return this.cache[key];
 
     try {
-      const list = await this.api.getListDosenPengajarKelasKuliah({
+      const list = await this.api.getDosenPengajarKelasKuliah({
         nuptk: nuptk.trim(),
         id_kelas_kuliah: idKelas
       });

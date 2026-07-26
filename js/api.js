@@ -124,11 +124,6 @@ export class NeoFeederAPI {
     throw new Error('Token tidak ditemukan dalam respons');
   }
 
-  // Referensi
-  // async getDictionary() {
-  //   const res = await this.call('GetDictionary');
-  //   return this.extractData(res);
-  // }
 
   async getDictionary(fungsi = null) {
     const params = {};
@@ -230,7 +225,7 @@ export class NeoFeederAPI {
     // Di bagian Referensi
   async getListPenugasanDosen(filter = {}) {
     let filterStr = '';
-    if (filter.nidn) filterStr = `nidn = '${filter.nidn}'`;
+    if (filter.nuptk) filterStr = `nuptk = '${filter.nuptk}'`;
     const res = await this.call('GetListPenugasanDosen', { filter: filterStr, limit: 1 });
     return this.extractData(res);
   }
@@ -274,13 +269,13 @@ export class NeoFeederAPI {
   }
 
   // Mencari aktivitas mengajar dosen
-  async getListDosenPengajarKelasKuliah(filter = {}) {
+  async getDosenPengajarKelasKuliah(filter = {}) {
     const conditions = [];
     if (filter.id_semester) conditions.push(`id_semester = '${filter.id_semester}'`);
     if (filter.id_kelas_kuliah) conditions.push(`id_kelas_kuliah = '${filter.id_kelas_kuliah}'`);
-    if (filter.nidn) conditions.push(`nidn = '${filter.nidn}'`);
+    if (filter.nuptk) conditions.push(`nuptk = '${filter.nuptk}'`);
     const filterStr = conditions.length ? conditions.join(' and ') : '';
-    const res = await this.call('GetListDosenPengajarKelasKuliah', { filter: filterStr, limit: 1 });
+    const res = await this.call('GetDosenPengajarKelasKuliah', { filter: filterStr, limit: 1 });
     return this.extractData(res);
   }
 
@@ -327,27 +322,6 @@ export class NeoFeederAPI {
     });
   }
 
-  async deleteKomponenEvaluasiKelas(params) {
-    // Coba kirim sebagai key terlebih dahulu
-    try {
-      return await this.callSafe('DeleteKomponenEvaluasiKelas', {
-        key: {
-          id_kelas_kuliah: params.id_kelas_kuliah,
-          id_jenis_evaluasi: params.id_jenis_evaluasi,
-          nama: params.nama || ''
-        }
-      });
-    } catch (e) {
-      // Jika timeout atau error, coba kirim sebagai parameter langsung
-      console.warn('Gagal dengan key, mencoba parameter langsung...');
-      return this.callSafe('DeleteKomponenEvaluasiKelas', {
-        id_kelas_kuliah: params.id_kelas_kuliah,
-        id_jenis_evaluasi: params.id_jenis_evaluasi,
-        nama: params.nama || ''
-      });
-    }
-  }
-  
 
   async deleteRencanaPembelajaran(id_rencana_ajar) {
     return this.callSafe('DeleteRencanaPembelajaran', { id_rencana_ajar });
@@ -364,11 +338,32 @@ export class NeoFeederAPI {
   }
 
   // Menghapus aktivitas mengajar berdasarkan id_aktivitas_mengajar
-  async deleteDosenPengajarKelasKuliah(id_aktivitas_mengajar) {
-    return this.callSafe('DeleteDosenPengajarKelasKuliah', { key: { id_aktivitas_mengajar } });
+  async deleteDosenPengajarKelasKuliah(payload) {
+    return this.callSafe('DeleteDosenPengajarKelasKuliah', { 
+      key: { 
+        id_aktivitas_mengajar: payload.id_aktivitas_mengajar 
+      } 
+    });
   }
 
-  async deletePesertaKelasKuliah(id_peserta) {
-    return this.callSafe('DeletePesertaKelasKuliah', { id_peserta });
+  async deletePesertaKelasKuliah(payload) {
+    return this.callSafe('DeletePesertaKelasKuliah', {
+      key: {
+        id_kelas_kuliah: payload.id_kelas_kuliah,
+        id_registrasi_mahasiswa: payload.id_registrasi_mahasiswa
+      }
+    });
+  }
+
+  //Tidak bisa Hapus Komponen Evaluasi di Kelas (hanya bisa UPDATE)
+  async deleteKomponenEvaluasiKelas(params) {
+    return this.callSafe('DeleteKomponenEvaluasiKelas', {
+      key: {
+        // id_komponen_evaluasi: params.id_komponen_evaluasi,
+        id_kelas_kuliah: params.id_kelas_kuliah,
+        id_jenis_evaluasi: params.id_jenis_evaluasi,
+        nama: params.nama || ''
+      }
+    });
   }
 }

@@ -5,6 +5,11 @@ export function normalizeString(str) {
     .replace(/[^a-z0-9]/g, '');
 }
 
+export function sanitizeText(str) {
+  if (!str) return '';
+  return String(str).replace(/'/g, '’').trim();
+}
+
 export function similarity(s1, s2) {
   let longer = s1, shorter = s2;
   if (s1.length < s2.length) [longer, shorter] = [s2, s1];
@@ -12,6 +17,8 @@ export function similarity(s1, s2) {
   if (longerLength === 0) return 1.0;
   return (longerLength - editDistance(longer, shorter)) / parseFloat(longerLength);
 }
+
+
 
 function editDistance(s1, s2) {
   s1 = s1.toLowerCase(); s2 = s2.toLowerCase();

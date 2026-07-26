@@ -1,6 +1,8 @@
 import { renderDashboard } from './dashboard.js';
 import { renderReferensiView } from './referensi.js';
 import { renderInsertView } from './insertWizard.js';
+import { renderDeleteView } from './deleteWizard.js';
+import { renderUpdateView } from './updateWizard.js';
 
 export function initViewManager(mainContent) {
   const navButtons = document.querySelectorAll('#sidebar-nav .nav-btn');
@@ -17,6 +19,12 @@ export function initViewManager(mainContent) {
         break;
       case 'referensi':
         await renderReferensiView(mainContent);
+        break;
+      case 'delete':
+        renderDeleteView(mainContent);
+        break;
+      case 'update':
+        renderUpdateView(mainContent);
         break;
       // ... lainnya
       default:
