@@ -289,11 +289,11 @@ const METHOD_CONFIG = {
   InsertPesertaKelasKuliah: {
     targetFields: [
       'periode',
-      'kode_mata_kuliah',
-      'nama_mata_kuliah',
-      'nama_kelas',
       'nim',
       'nama_mahasiswa',
+      'nama_kelas',
+      'kode_mata_kuliah',
+      'nama_mata_kuliah',
     ],
     requiredFields: ['periode', 'kode_mata_kuliah', 'nama_kelas', 'nim'],
     transformFn: function(row) {
