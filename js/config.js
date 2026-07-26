@@ -10,9 +10,9 @@ export const STORAGE_KEYS = {
 };
 
 export const IMPORT_DEFAULTS = {
-  batchSize: 5,
-  delay: 100,
-  retry: 2,
+  batchSize: 5, // (jumlah baris per batch)
+  delay: 500, // (jeda antar baris dalam milidetik)
+  retry: 1, // (jumlah percobaan ulang jika gagal)
   continueOnError: true,
   skipInvalid: true,
   timeout: 30000,
@@ -25,7 +25,9 @@ export const FIELD_SYNONYMS = {
   nama_mata_kuliah: ['nama mk','matakuliah','nama mata kuliah','namamatkul','nama course','course name','subject','mata kuliah'],
   kode_prodi: ['kode prodi','prodi code','kode program studi','program studi code','kode prod','prodi'],
   nama_prodi: ['nama prodi','program studi','prodi name','nama program studi','prodi'],
-  id_dosen: ['id dosen','dosen id','nidn','nuptk','id dosen pengampu'],
+  id_dosen: ['id dosen','dosen id','id dosen pengampu'],
+  nuptk: ['nuptk'],
+  nidn: ['nidn'],
   nama_dosen: ['nama dosen','dosen','lecturer name','nama pengajar'],
   semester: ['semester','sem','smt'],
   tahun_ajaran: ['tahun ajaran','tahun akademik','academic year','thn ajaran','ta'],
@@ -46,6 +48,12 @@ export const FIELD_SYNONYMS = {
   nilai_indeks: ['nilai indeks', 'indeks', 'indeks nilai', 'index'],
   nilai_huruf: ['nilai huruf', 'huruf', 'letter grade', 'grade'],
   nama_kelas: ['nama kelas', 'kelas', 'class name', 'class'],
+  aktivitas_partisipatif: ['aktivitas partisipatif', 'partisipatif', 'aktivitas partisipatif (%)'],
+  hasil_proyek: ['hasil proyek', 'proyek', 'hasil proyek (%)'],
+  tugas: ['tugas', 'tugas (%)'],
+  quiz: ['quiz', 'kuis', 'quiz (%)'],
+  uts: ['uts', 'ujian tengah semester', 'uts (%)'],
+  uas: ['uas', 'ujian akhir semester', 'uas (%)'],
 };
 
 export const DICTIONARY_CACHE_KEY = 'custom_dictionary';

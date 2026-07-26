@@ -43,3 +43,239 @@ Jangan ubah importProcess.js — sudah stabil untuk semua jenis operasi.
 Jika muncul error [108] Parameter yang dikirim tidak valid, gunakan console.log(JSON.stringify(payload)) sebelum request, lalu bandingkan dengan dictionary.
 
 Jika InsertPesertaKelasKuliah suatu saat diperbaiki, konfigurasinya sudah siap di METHOD_CONFIG, tinggal diaktifkan kembali di INSERT_METHODS.
+
+
+
+{"act":"GetDictionary",
+  "fungsi": "UpdateNilaiPerkuliahanKelasKomponenEvaluasi",
+  "filter": "",
+  "order": "",
+  "limit": 10,
+  "offset": 0
+}
+
+{
+  "error_code": 0,
+  "error_desc": "",
+  "data": {
+    "request": {
+      "token": "",
+      "key[id_komponen_evaluasi]": {
+        "type": "",
+        "primary": "",
+        "nullable": "",
+        "keterangan": ""
+      },
+      "key[id_registrasi_mahasiswa]": {
+        "type": "uuid",
+        "primary": "",
+        "nullable": "not null",
+        "keterangan": "ID Registrasi Mahasiswa. Web Service: GetListRiwayatPendidikanMahasiswa"
+      },
+      "record[nilai_komponen_evaluasi]": {
+        "type": "numeric(2,0)",
+        "primary": "",
+        "nullable": "not null",
+        "keterangan": ""
+      }
+    },
+    "response": {
+      "error_code": "",
+      "error_desc": "",
+      "data[id_komponen_evaluasi]": {
+        "type": "",
+        "primary": "",
+        "nullable": "",
+        "keterangan": ""
+      },
+      "data[id_registrasi_mahasiswa]": {
+        "type": "uuid",
+        "primary": "",
+        "nullable": "not null",
+        "keterangan": "ID Registrasi Mahasiswa. Web Service: GetListRiwayatPendidikanMahasiswa"
+      }
+    }
+  }
+}
+
+
+{"act":"GetDictionary",
+  "fungsi": "InsertKomponenEvaluasiKelas",
+  "filter": "",
+  "order": "",
+  "limit": 10,
+  "offset": 0
+}
+
+{
+  "error_code": 0,
+  "error_desc": "",
+  "data": {
+    "request": {
+      "token": "",
+      "record[id_kelas_kuliah]": {
+        "type": "",
+        "primary": "",
+        "nullable": "",
+        "keterangan": ""
+      },
+      "record[id_jenis_evaluasi]": {
+        "type": "numeric",
+        "primary": "",
+        "nullable": "not null",
+        "keterangan": "ID Jenis Evaluasi. Web Service: GetJenisEvaluasi"
+      },
+      "record[nama]": {
+        "type": "",
+        "primary": "",
+        "nullable": "",
+        "keterangan": ""
+      },
+      "record[nama_inggris]": {
+        "type": "",
+        "primary": "",
+        "nullable": "",
+        "keterangan": ""
+      },
+      "record[nomor_urut]": {
+        "type": "numeric",
+        "primary": "",
+        "nullable": "",
+        "keterangan": ""
+      },
+      "record[bobot_evaluasi]": {
+        "type": "numeric(3,2)",
+        "primary": "",
+        "nullable": "",
+        "keterangan": "Min: 0, Max: 100"
+      }
+    },
+    "response": {
+      "error_code": "",
+      "error_desc": "",
+      "data[id_komponen_evaluasi]": {
+        "type": "uuid",
+        "primary": "",
+        "nullable": "",
+        "keterangan": ""
+      }
+    }
+  }
+}
+
+
+{"act":"GetDictionary",
+  "fungsi": "UpdateKomponenEvaluasiKelas",
+  "filter": "",
+  "order": "",
+  "limit": 10,
+  "offset": 0
+}
+{
+  "error_code": 0,
+  "error_desc": "",
+  "data": {
+    "request": {
+      "token": "",
+      "record[id_kelas_kuliah]": {
+        "type": "",
+        "primary": "",
+        "nullable": "",
+        "keterangan": ""
+      },
+      "record[id_jenis_evaluasi]": {
+        "type": "numeric",
+        "primary": "",
+        "nullable": "not null",
+        "keterangan": "ID Jenis Evaluasi. Web Service: GetJenisEvaluasi"
+      },
+      "record[nama]": {
+        "type": "",
+        "primary": "",
+        "nullable": "",
+        "keterangan": ""
+      },
+      "record[nama_inggris]": {
+        "type": "",
+        "primary": "",
+        "nullable": "",
+        "keterangan": ""
+      },
+      "record[nomor_urut]": {
+        "type": "numeric",
+        "primary": "",
+        "nullable": "",
+        "keterangan": ""
+      },
+      "record[bobot_evaluasi]": {
+        "type": "numeric(3,2)",
+        "primary": "",
+        "nullable": "",
+        "keterangan": "Min: 0, Max: 100"
+      },
+      "key[id_komponen_evaluasi]": {
+        "type": "uuid",
+        "primary": "primary",
+        "nullable": "not null",
+        "keterangan": "Primary Key, kosongkan ketika mode Tambah"
+      }
+    },
+    "response": {
+      "error_code": "",
+      "error_desc": "",
+      "data[id_rencana_evaluasi]": {
+        "type": "uuid",
+        "primary": "",
+        "nullable": "",
+        "keterangan": ""
+      }
+    }
+  }
+}
+
+
+
+{"act":"GetDictionary",
+  "fungsi": "SalinKomponenEvaluasiMatkul",
+  "filter": "",
+  "order": "",
+  "limit": 10,
+  "offset": 0
+}
+{
+  "error_code": 0,
+  "error_desc": "",
+  "data": {
+    "request": {
+      "token": "",
+      "record[id_kelas_kuliah]": {
+        "type": "uuid",
+        "primary": "",
+        "nullable": "",
+        "keterangan": ""
+      },
+      "record[id_matkul]": {
+        "type": "uuid",
+        "primary": "",
+        "nullable": "not null",
+        "keterangan": "ID Mata Kuliah. Web Service: GetListMataKuliah"
+      }
+    },
+    "response": {
+      "error_code": "",
+      "error_desc": "",
+      "data[id_kelas_kuliah]": {
+        "type": "uuid",
+        "primary": "",
+        "nullable": "",
+        "keterangan": ""
+      },
+      "data[id_matkul]": {
+        "type": "uuid",
+        "primary": "",
+        "nullable": "",
+        "keterangan": ""
+      }
+    }
+  }
+}

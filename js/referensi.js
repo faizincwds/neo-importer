@@ -80,7 +80,7 @@ export async function renderReferensiView(container) {
           response = await api.call('GetListMataKuliah');
           break;
         case 'GetListKelasKuliah':
-          response = await api.call('GetListKelasKuliah', { limit: 20 });
+          response = await api.call('GetListKelasKuliah', { limit: 30 });
           break;
         case 'GetSemester':
           response = await api.call('GetSemester', { filter: `a_periode_aktif='1'` });
@@ -89,10 +89,10 @@ export async function renderReferensiView(container) {
           response = await api.call('GetJenisEvaluasi');
           break;
         case 'GetListRencanaEvaluasi':
-          response = await api.call('GetListRencanaEvaluasi', { limit: 20 });
+          response = await api.call('GetListRencanaEvaluasi', { limit: 30 });
           break;
         case 'GetListKomponenEvaluasiKelas':
-          response = await api.call('GetListKomponenEvaluasiKelas', { limit: 100 });
+          response = await api.call('GetListKomponenEvaluasiKelas', { filter: `tgl_create LIKE '%2026%'`, order: `id_kelas_kuliah`, limit: 30 });
           break;
         default:
           throw new Error(`Method ${method} tidak dikenali`);
@@ -125,9 +125,11 @@ export async function renderReferensiView(container) {
   }
 
   function renderTable(container, data, dictionary, method) {
+
     // Jika data bukan array, bungkus jadi array
     const records = Array.isArray(data) ? data : [data];
-    
+    console.log('records', data);
+
     if (records.length === 0) {
       container.innerHTML = '<p class="text-gray-500">Tidak ada data.</p>';
       return;
@@ -135,12 +137,14 @@ export async function renderReferensiView(container) {
 
     // Tentukan header: gunakan dictionary response jika ada, jika tidak ambil dari keys record pertama
     let headers = [];
-    if (dictionary && dictionary.response) {
-      headers = Object.keys(dictionary.response)
+
+    if (dictionary && dictionary.response || data) {
+      
+      headers = Object.keys(data || dictionary.response)
         .filter(key => key.startsWith('data['))
         .map(key => {
           const fieldName = key.match(/data\[(.*?)\]/)?.[1] || key;
-          const info = dictionary.response[key] || {};
+          const info = data[0] || dictionary.response[key] || {};
           return { field: fieldName, label: info.keterangan || fieldName };
         });
     }

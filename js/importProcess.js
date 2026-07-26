@@ -26,6 +26,18 @@ export class ImportProcess {
     const batches = this.chunkArray(this.rows, this.settings.batchSize);
     this.totalBatches = batches.length;
 
+    // Jika tidak ada data yang diproses
+    if (batches.length === 0 || batches.every(b => b.length === 0)) {
+      this.realtimeLogs.push({
+        timestamp: new Date().toISOString(),
+        type: 'skipped',
+        message: 'Tidak ada data yang perlu diupdate (semua komponen mungkin belum ada atau bobot 0).'
+      });
+      this.notifyProgress(progressCallback);
+      this.isRunning = false;
+      return { success: 0, failed: 0, skipped: 1 };
+    }
+
     for (let i = 0; i < batches.length; i++) {
       if (!this.isRunning) break;
       while (this.isPaused) await this.delay(100);
@@ -42,6 +54,8 @@ export class ImportProcess {
     for (const row of batch) {
       if (!this.isRunning) break;
 
+       console.log('Processing row:', row);
+
       if (this.settings.skipInvalid && row.__errors && Object.keys(row.__errors).length > 0) {
         this.totalSkipped++;
         this.realtimeLogs.push({
@@ -56,37 +70,59 @@ export class ImportProcess {
 
       let success = false;
       let errorMsg = '';
-      try {
-          const apiMethod = this.api[this.method.charAt(0).toLowerCase() + this.method.slice(1)];
-          if (typeof apiMethod === 'function') {
-            const arg = (typeof row === 'string' || row instanceof String) ? row : row;
-            await apiMethod.call(this.api, arg);
-            this.totalSuccess++;
-            success = true;
-          } else {
-            // Jika tidak ada method spesifik, lemparkan error
-            throw new Error(`Method ${this.method} tidak tersedia`);
-          }
+      
+        const apiMethodName = this.method.charAt(0).toLowerCase() + this.method.slice(1);
+        let apiMethod = this.api[apiMethodName];
+        let arg = row;
+        
+        // Jika row memiliki properti 'type' dan 'payload', gunakan payload dan tentukan method
+        if (row && row.type === 'update' || row.type === 'existing') {
+          arg = { key: row.key, record: row.record };
+          apiMethod = this.api['updateKomponenEvaluasiKelas']; // atau method spesifik
+        } else if (row && row.type === 'insert') {
+         arg = row.payload || row;
+        } else if (row && row._action === 'nilai_akhir') {
+          // Gunakan method updateNilaiPerkuliahanKelas
+          arg = { key: row.key, record: row.record };
+          apiMethod = this.api['updateNilaiPerkuliahanKelas'];
+        } else if (row && row._action === 'nilai_komponen') {
+          // Gunakan method updateNilaiPerkuliahanKelasKomponenEvaluasi
+          arg = { key: row.key, record: row.record };
+          apiMethod = this.api['updateNilaiPerkuliahanKelasKomponenEvaluasi'];
+        }
+
+      try {  
+        if (typeof apiMethod !== 'function') throw new Error(`Method ${this.method} tidak tersedia`);
+        await apiMethod.call(this.api, arg);
+
+        // ✅ Sukses
+        this.totalSuccess++;
+        success = true;
+        console.log('Row succeeded, totalSuccess:', this.totalSuccess);
+
      } catch (err) {
         this.totalFailed++;
         errorMsg = err.message;
-        if (this.settings.retry > 0) {
-          for (let r = 1; r <= this.settings.retry; r++) {
-            try {
-              if (typeof apiMethod === 'function') {
-                await apiMethod.call(this.api, row);
-              } else {
-                await this.api.callSafe(this.method, { record: row });
+          if (this.settings.retry > 0) {
+            for (let r = 1; r <= this.settings.retry; r++) {
+              try {
+                // Gunakan row asli yang sudah dibersihkan (bukan objek dengan _display)
+                const cleanRow = { ...row };
+                delete cleanRow._display;
+                if (typeof apiMethod === 'function') {
+                  await apiMethod.call(this.api, cleanRow);
+                } else {
+                  await this.api.callSafe(this.method, { record: cleanRow });
+                }
+                this.totalSuccess++;
+                this.totalFailed--;
+                success = true;
+                break;
+              } catch (retryErr) {
+                errorMsg = retryErr.message;
               }
-              this.totalSuccess++;
-              this.totalFailed--;
-              success = true;
-              break;
-            } catch (retryErr) {
-              errorMsg = retryErr.message;
             }
           }
-        }
       }
 
       this.realtimeLogs.push({
@@ -123,7 +159,8 @@ export class ImportProcess {
         return {
             kode_mata_kuliah: row._display.kode_mata_kuliah || '',
             nama_mata_kuliah: row._display.nama_mata_kuliah || '',
-            kelas: row._display.kelas || ''
+            kelas: row._display.kelas || '',
+            _display: row._display
         };
     }
     // Data yang masuk bisa berupa payload API (id_matkul) atau grid data (kode_mata_kuliah)
@@ -132,6 +169,7 @@ export class ImportProcess {
         kode_mata_kuliah: row.kode_mata_kuliah || row.id_matkul || '',
         nama_mata_kuliah: row.nama_mata_kuliah || '',
         kelas: row.nama_kelas_kuliah || row.kelas || '',
+        _display: row._display
       };
     }
     return { ...row };

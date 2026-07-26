@@ -19,27 +19,56 @@ export class NeoFeederAPI {
 
     console.log(`[API] Request ${method}`, payload);
 
-    const response = await fetch(API_BASE, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 detik timeout
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`[API] HTTP ${response.status}`, errorText);
-      throw new Error(`HTTP ${response.status} - ${response.statusText}`);
+    try {
+      const response = await fetch(API_BASE, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`[API] HTTP ${response.status}`, errorText);
+        throw new Error(`HTTP ${response.status} - ${response.statusText}`);
+      }
+
+      const text = await response.text();
+      if (!text) {
+        console.error(`[API] Empty response for ${method}`);
+        throw new Error('Server mengembalikan respons kosong');
+      }
+
+      let json;
+      try {
+        json = JSON.parse(text);
+      } catch (e) {
+        console.error(`[API] Respons bukan JSON: ${text.substring(0, 100)}`);
+        throw new Error('Respons server bukan JSON yang valid');
+      }
+
+      console.log(`[API] Response ${method}`, json);
+
+      if (json.error) {
+        const msg = typeof json.error === 'string' ? json.error : json.error_description || 'Unknown error';
+        throw new Error(msg);
+      }
+
+      return json;
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (error.name === 'AbortError') {
+        console.error(`[API] Timeout untuk ${method}`);
+        throw new Error(`Timeout setelah 30 detik untuk ${method}`);
+      }
+      console.error(`[API] ${method} failed:`, error.message);
+      throw error;
     }
-
-    const json = await response.json();
-    console.log(`[API] Response ${method}`, json);
-
-    if (json.error) {
-      const msg = typeof json.error === 'string' ? json.error : json.error_description || 'Unknown error';
-      throw new Error(msg);
-    }
-
-    return json;
   }
 
 
@@ -49,7 +78,11 @@ export class NeoFeederAPI {
   async callSafe(method, params = {}) {
     const res = await this.call(method, params);
     // Neo Feeder biasanya mengembalikan error_code, 0 = sukses
-    if (res.error_code && res.error_code !== 0) {
+    if (res.error_code === undefined) {
+      console.warn('Respons tidak memiliki error_code:', res);
+      throw new Error('Respons tidak valid (tidak ada error_code)');
+    }
+    if (res.error_code !== 0) {
       throw new Error(`[${res.error_code}] ${res.error_desc || 'Unknown error'}`);
     }
     return res;
@@ -262,6 +295,26 @@ export class NeoFeederAPI {
     return this.callSafe('InsertPesertaKelasKuliah', { record: cleanRecord });
     // return this.callSafe('InsertPesertaKelasKuliah', { record: JSON.stringify(cleanRecord) });
   }
+  
+
+  async insertKomponenEvaluasiKelas(record) {
+    const { _display, ...cleanRecord } = record; 
+    return this.callSafe('InsertKomponenEvaluasiKelas', { record: cleanRecord });
+  }
+
+  async updateKomponenEvaluasiKelas(payload) {
+    return this.callSafe('UpdateKomponenEvaluasiKelas', {
+      key: { id_komponen_evaluasi: payload.key.id_komponen_evaluasi },
+      record: payload.record
+    });
+  }
+
+  async updateNilaiPerkuliahanKelasKomponenEvaluasi(payload) {
+    return this.callSafe('UpdateNilaiPerkuliahanKelasKomponenEvaluasi', {
+      key: payload.key,
+      record: payload.record
+    });
+  }
 
   async insertRencanaEvaluasi(record) {
     return this.callSafe('InsertRencanaEvaluasi', { record: JSON.stringify(record) });
@@ -275,11 +328,24 @@ export class NeoFeederAPI {
   }
 
   async deleteKomponenEvaluasiKelas(params) {
-    return this.callSafe('DeleteKomponenEvaluasiKelas', {
-      id_kelas_kuliah: params.id_kelas_kuliah,
-      id_jenis_evaluasi: params.id_jenis_evaluasi,
-      nama: params.nama
-    });
+    // Coba kirim sebagai key terlebih dahulu
+    try {
+      return await this.callSafe('DeleteKomponenEvaluasiKelas', {
+        key: {
+          id_kelas_kuliah: params.id_kelas_kuliah,
+          id_jenis_evaluasi: params.id_jenis_evaluasi,
+          nama: params.nama || ''
+        }
+      });
+    } catch (e) {
+      // Jika timeout atau error, coba kirim sebagai parameter langsung
+      console.warn('Gagal dengan key, mencoba parameter langsung...');
+      return this.callSafe('DeleteKomponenEvaluasiKelas', {
+        id_kelas_kuliah: params.id_kelas_kuliah,
+        id_jenis_evaluasi: params.id_jenis_evaluasi,
+        nama: params.nama || ''
+      });
+    }
   }
   
 
