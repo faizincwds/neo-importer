@@ -1,4 +1,5 @@
 import { API_BASE, STORAGE_KEYS } from './config.js';
+import { loggerInst } from './loggerView.js';
 
 export class NeoFeederAPI {
   constructor() {
@@ -22,6 +23,8 @@ export class NeoFeederAPI {
       ...params,
     };
 
+    // ✅ Catat permintaan ke log
+    loggerInst.log('api', `Mengirim permintaan: ${method}`, { url, payload });
     console.log(`[URL API] Request`, url);
     console.log(`[API] Request ${method}`, payload);
 
@@ -40,12 +43,16 @@ export class NeoFeederAPI {
 
       if (!response.ok) {
         const errorText = await response.text();
+        // ✅ Catat error HTTP
+        loggerInst.log('error', `Gagal terhubung API: HTTP ${response.status}`, { status: response.status, respon: errorText });
         console.error(`[API] HTTP ${response.status}`, errorText);
         throw new Error(`HTTP ${response.status} - ${response.statusText}`);
       }
 
       const text = await response.text();
       if (!text) {
+        // ✅ Catat respon kosong
+        loggerInst.log('warning', `Respon kosong dari server untuk ${method}`);
         console.error(`[API] Empty response for ${method}`);
         throw new Error('Server mengembalikan respons kosong');
       }
@@ -54,25 +61,48 @@ export class NeoFeederAPI {
       try {
         json = JSON.parse(text);
       } catch (e) {
+        // ✅ Catat kesalahan format JSON
+        loggerInst.log('error', `Respon bukan JSON untuk ${method}`, { respon: text.substring(0, 200) });
         console.error(`[API] Respons bukan JSON: ${text.substring(0, 100)}`);
         throw new Error('Respons server bukan JSON yang valid');
       }
 
       if (json.error) {
         const msg = typeof json.error === 'string' ? json.error : json.error_description || 'Unknown error';
+        // ✅ Catat error dari API Neo Feeder
+        loggerInst.log('error', `API menolak permintaan: ${msg}`, json);
         throw new Error(msg);
       }
+
+      // ✅ Catat keberhasilan
+      loggerInst.log('success', `Berhasil memproses: ${method}`, { ringkasan: this.ringkasData(json) });
 
       return json;
     } catch (error) {
       clearTimeout(timeoutId);
       if (error.name === 'AbortError') {
+        // ✅ Catat timeout
+        loggerInst.log('error', `Permintaan dibatalkan: Timeout 30 detik untuk ${method}`);
         console.error(`[API] Timeout untuk ${method}`);
         throw new Error(`Timeout setelah 30 detik untuk ${method}`);
       }
+      // ✅ Catat kesalahan umum
+      loggerInst.log('error', `Kesalahan pada ${method}: ${error.message}`);
       console.error(`[API] ${method} failed:`, error.message);
       throw error;
     }
+  }
+
+  // Fungsi bantu: ringkas data agar log tidak terlalu panjang
+  ringkasData(data) {
+    if (!data) return null;
+    if (Array.isArray(data)) return `[${data.length} item]`;
+    if (typeof data === 'object') {
+      const ringkas = {};
+      for (const k of Object.keys(data).slice(0, 5)) ringkas[k] = data[k];
+      return ringkas;
+    }
+    return data;
   }
 
 
@@ -83,10 +113,12 @@ export class NeoFeederAPI {
     const res = await this.call(method, params);
     // Neo Feeder biasanya mengembalikan error_code, 0 = sukses
     if (res.error_code === undefined) {
+      loggerInst.log('warning', `Respon ${method} tidak memiliki error_code`, res);
       console.warn('Respons tidak memiliki error_code:', res);
       throw new Error('Respons tidak valid (tidak ada error_code)');
     }
     if (res.error_code !== 0) {
+      loggerInst.log('error', `Kesalahan API ${method}: [${res.error_code}] ${res.error_desc || 'Tidak ada keterangan'}`);
       throw new Error(`[${res.error_code}] ${res.error_desc || 'Unknown error'}`);
     }
     return res;
@@ -280,14 +312,14 @@ export class NeoFeederAPI {
   }
 
     // Generic method untuk referensi yang hanya butuh act
-  async getAgama() { const res = await this.call('GetAgama'); return this.extractData(res); }
-  async getJenisTinggal() { const res = await this.call('GetJenisTinggal'); return this.extractData(res); }
-  async getAlatTransportasi() { const res = await this.call('GetAlatTransportasi'); return this.extractData(res); }
-  async getWilayah() { const res = await this.call('GetWilayah'); return this.extractData(res); }
-  async getJenjangPendidikan() { const res = await this.call('GetJenjangPendidikan'); return this.extractData(res); }
-  async getPekerjaan() { const res = await this.call('GetPekerjaan'); return this.extractData(res); }
-  async getPenghasilan() { const res = await this.call('GetPenghasilan'); return this.extractData(res); }
-  async getKebutuhanKhusus() { const res = await this.call('GetKebutuhanKhusus'); return this.extractData(res); }
+  // async getAgama() { const res = await this.call('GetAgama'); return this.extractData(res); }
+  // async getJenisTinggal() { const res = await this.call('GetJenisTinggal'); return this.extractData(res); }
+  // async getAlatTransportasi() { const res = await this.call('GetAlatTransportasi'); return this.extractData(res); }
+  // async getWilayah() { const res = await this.call('GetWilayah'); return this.extractData(res); }
+  // async getJenjangPendidikan() { const res = await this.call('GetJenjangPendidikan'); return this.extractData(res); }
+  // async getPekerjaan() { const res = await this.call('GetPekerjaan'); return this.extractData(res); }
+  // async getPenghasilan() { const res = await this.call('GetPenghasilan'); return this.extractData(res); }
+  // async getKebutuhanKhusus() { const res = await this.call('GetKebutuhanKhusus'); return this.extractData(res); }
 
   // END REFERENCE
 

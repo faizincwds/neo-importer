@@ -7,7 +7,7 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
   <script src="./dist/xlsx.full.min.js"></script>
-
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css">
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body class="bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100 min-h-screen flex">
@@ -39,44 +39,62 @@
     </div>
   </aside>
 
-   <!-- Tombol hamburger untuk mobile -->
-    <button id="menu-toggle-btn" class="md:hidden fixed top-4 left-4 z-50 p-2 rounded-lg bg-white dark:bg-gray-800 shadow-lg" aria-label="Menu">
-      <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
-      </svg>
-    </button>
+  <!-- Tombol hamburger untuk mobile -->
+  <button id="menu-toggle-btn" class="md:hidden fixed top-4 left-4 z-50 p-2 rounded-lg bg-white dark:bg-gray-800 shadow-lg" aria-label="Menu">
+    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+    </svg>
+  </button>
 
   <!-- Main Content -->
-  <main class="flex-1 p-4 md:p-6 overflow-auto" id="main-content">
+  <main class="flex-1 p-4 md:p-6 overflow-auto flex flex-col" id="main-content">
     <!-- Tampilan awal sebelum login -->
-    <section id="view-login" class="max-w-md mx-auto mt-10 md:mt-20 glass p-6 md:p-8 rounded-2xl shadow-2xl">
-      <h2 class="text-2xl font-bold mb-6 text-center">Login Neo Feeder</h2>
-      <div class="space-y-4">
-        <!-- Input URL API -->
-        <div>
-          <label class="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">URL API Feeder</label>
-          <input id="api-url" type="text" placeholder="http://localhost:3003" value="http://localhost:3003"
-                class="w-full p-3 rounded-xl bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-800 dark:text-gray-100">
-        </div>
+    <div id="kontenUtama" class="flex-1">
+      <section id="view-login" class="max-w-md mx-auto mt-10 md:mt-20 glass p-6 md:p-8 rounded-2xl shadow-2xl">
+        <h2 class="text-2xl font-bold mb-6 text-center">Login Neo Feeder</h2>
+        <div class="space-y-4">
+          <!-- Input URL API -->
+          <div>
+            <label class="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">URL API Feeder</label>
+            <input id="api-url" type="text" placeholder="http://localhost:3003" value="http://localhost:3003"
+                  class="w-full p-3 rounded-xl bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-800 dark:text-gray-100">
+          </div>
 
-        <!-- Input Type API -->
-        <div>
-          <select id="api-type" class="w-full p-3 rounded-xl bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-800 dark:text-gray-100">
-            <option value="sandbox2.php">sandbox2.php (Sandbox)</option>
-            <option value="live2.php">live2.php (Live)</option>
-          </select>
+          <!-- Input Type API -->
+          <div>
+            <select id="api-type" class="w-full p-3 rounded-xl bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-800 dark:text-gray-100">
+              <option value="sandbox2.php">sandbox2.php (Sandbox)</option>
+              <option value="live2.php">live2.php (Live)</option>
+            </select>
+          </div>
+          
+          <label class="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">Login User</label>
+          <input id="username" type="text" placeholder="Username" class="w-full p-3 rounded-xl bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600">
+          <input id="password" type="password" placeholder="Password" class="w-full p-3 rounded-xl bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600">
+          <button id="get-token-btn" class="w-full py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition flex items-center justify-center gap-2">
+            <span id="btn-text">Get Token</span>
+            <span id="btn-loader" class="hidden animate-spin">⏳</span>
+          </button>
         </div>
-        
-        <label class="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">Login User</label>
-        <input id="username" type="text" placeholder="Username" class="w-full p-3 rounded-xl bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600">
-        <input id="password" type="password" placeholder="Password" class="w-full p-3 rounded-xl bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600">
-        <button id="get-token-btn" class="w-full py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition flex items-center justify-center gap-2">
-          <span id="btn-text">Get Token</span>
-          <span id="btn-loader" class="hidden animate-spin">⏳</span>
+        <div id="login-status" class="mt-4 text-center text-sm"></div>
+      </section>
+    </div>
+
+    <!-- === LOG AKTIVITAS: SELALU DI BAWAH, TIDAK BERGERAK === -->
+    <div id="activity-log-wrapper" class="mt-8 border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 shadow-sm">
+      <div class="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-700">
+        <h3 class="text-sm font-semibold flex items-center gap-2">
+          <i class="fa-solid fa-terminal text-blue-500"></i>
+          Log Aktivitas
+        </h3>
+        <button id="clear-log-btn" class="px-3 py-1 text-xs rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-all">
+          <i class="fa-solid fa-eraser mr-1"></i>Bersihkan
         </button>
       </div>
-      <div id="login-status" class="mt-4 text-center text-sm"></div>
-    </section>
+      <div id="activity-log" class="h-44 md:h-52 overflow-y-auto p-3 font-mono text-xs bg-gray-50 dark:bg-gray-900 text-gray-700 dark:text-gray-300">
+        <div class="text-center text-gray-400 dark:text-gray-500 py-4">Siap memproses...</div>
+      </div>
+    </div>
   </main>
 
   <!-- Toast container -->

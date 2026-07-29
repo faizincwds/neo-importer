@@ -7,10 +7,13 @@ import { renderUpdateView } from './updateWizard.js';
 
 export function initViewManager(mainContent) {
   const navButtons = document.querySelectorAll('#sidebar-nav .nav-btn');
+  // ✅ SIMPAN DULU kotak log sebelum membersihkan isi
+  const logWrapper = document.getElementById('activity-log-wrapper');
 
   async function loadView(viewName) {
     // Bersihkan main content (kecuali jika masih ada login view)
     mainContent.innerHTML = '';
+
     switch(viewName) {
       case 'dashboard':
         await renderDashboard(mainContent);
@@ -34,6 +37,10 @@ export function initViewManager(mainContent) {
       default:
         mainContent.innerHTML = `<div class="glass p-6 rounded-2xl"><h2 class="text-xl font-bold">${viewName} (Segera hadir)</h2></div>`;
     }
+
+    // ✅ MASUKKAN KEMBALI kotak log DI PALING BAWAH
+    if (logWrapper) mainContent.appendChild(logWrapper);
+
     // Update active state
     navButtons.forEach(btn => btn.classList.remove('active'));
     const activeBtn = document.querySelector(`[data-view="${viewName}"]`);

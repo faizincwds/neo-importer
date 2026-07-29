@@ -1,6 +1,7 @@
 import { NeoFeederAPI } from './api.js';
 import { STORAGE_KEYS } from './config.js';
 import { Logger } from './logger.js';
+import { log, loggerInst } from './loggerView.js';
 
 export async function renderDashboard(container) {
   const api = new NeoFeederAPI();
@@ -45,7 +46,7 @@ export async function renderDashboard(container) {
     </div>
     <div class="glass p-4 rounded-xl">
       <h3 class="font-semibold mb-3">Aktivitas Terakhir</h3>
-      <div id="activity-log" class="text-sm max-h-48 overflow-y-auto space-y-1 text-gray-600 dark:text-gray-400"></div>
+      <div id="recent-activity" class="text-sm max-h-48 overflow-y-auto space-y-1 text-gray-600 dark:text-gray-400"></div>
     </div>
   </div>
 `;
@@ -113,7 +114,7 @@ export async function renderDashboard(container) {
 
   // Aktivitas terakhir
   const recent = logs.slice(-5).reverse();
-  const activityDiv = document.getElementById('activity-log');
+  const activityDiv = document.getElementById('recent-activity');
   if (recent.length === 0) {
     activityDiv.innerHTML = '<p class=">Belum ada aktivitas.</p>';
   } else {

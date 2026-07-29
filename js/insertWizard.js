@@ -5,6 +5,7 @@ import { NeoFeederAPI } from './api.js';
 import { GridEditor } from './gridEditor.js';
 import { ImportProcess } from './importProcess.js';
 import { sanitizeText, showToast } from './utils.js';
+import { loggerInst } from './loggerView.js';
 
 const METHOD_GROUPS = {
   'Kelas Kuliah (KRS)': [
@@ -1463,6 +1464,7 @@ export function renderInsertView(container) {
           let detail = '';
           if (log.type === 'failed') {
             detail = `<br><small class="text-gray-400">Payload: ${JSON.stringify(disp)}</small>`;
+            loggerInst.log('error', 'Data Gagal diimport', { detail });
           }
            return `<div class="py-1">${icon} ${info} ${detail}</div>`;
         }).join('');

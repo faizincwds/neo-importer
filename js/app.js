@@ -3,7 +3,11 @@ import { initViewManager } from './viewManager.js';
 import { showToast } from './utils.js';
 import { STORAGE_KEYS } from './config.js';
 
+import { log, loggerInst } from './loggerView.js';
+
 document.addEventListener('DOMContentLoaded', () => {
+
+  const clearLogBtn = document.getElementById('clear-log-btn');
   const mainContent = document.getElementById('main-content');
   const loginView = document.getElementById('view-login');
   const logoutBtn = document.getElementById('logout-btn');
@@ -12,11 +16,20 @@ document.addEventListener('DOMContentLoaded', () => {
   const loginBtn = document.getElementById('get-token-btn');
   const btnText = document.getElementById('btn-text');
   const btnLoader = document.getElementById('btn-loader');
-    // Setelah deklarasi loginView, tambahkan:
   const savedUsername = localStorage.getItem('nf_username');
   const savedPassword = localStorage.getItem('nf_password');
   if (savedUsername) document.getElementById('username').value = savedUsername;
   if (savedPassword) document.getElementById('password').value = savedPassword;
+
+  loggerInst.init();
+  log('info', 'Aplikasi siap digunakan'); // ✅ Contoh yang benar
+
+  if (clearLogBtn) {
+    clearLogBtn.addEventListener('click', () => {
+        loggerInst.clearLogs();
+      
+    });
+  }
 
   // ===== 1. Tema (Dark/Light) =====
   const themeToggleBtn = document.getElementById('theme-toggle-btn');
@@ -31,6 +44,7 @@ document.addEventListener('DOMContentLoaded', () => {
       localStorage.setItem('theme', 'light');
     }
   }
+
 
   // Inisialisasi tema (default dark)
   const savedTheme = localStorage.getItem('theme');

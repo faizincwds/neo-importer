@@ -263,3 +263,72 @@ input:focus, select:focus, textarea:focus {
 * {
   transition: background-color var(--transition-smooth), border-color var(--transition-smooth), color var(--transition-smooth);
 }
+
+/* ===== TAMBAHAN: LOG AKTIVITAS REALTIME ===== */
+#activity-log-wrapper {
+  transition: all var(--transition-smooth);
+}
+
+#activity-log {
+  line-height: 1.6;
+  scrollbar-width: thin;
+}
+
+/* Baris log */
+.log-entry {
+  margin-bottom: 0.25rem;
+  padding-left: 0.5rem;
+  border-left: 2px solid transparent;
+}
+.log-entry.info    { border-color: #3b82f6; color: #2563eb; }
+.log-entry.success { border-color: #10b981; color: #059669; }
+.log-entry.warning { border-color: #f59e0b; color: #d97706; }
+.log-entry.error   { border-color: #ef4444; color: #dc2626; }
+.log-entry.api     { border-color: #8b5cf6; color: #7c3aed; }
+
+.log-time {
+  color: var(--color-text-muted);
+  margin-right: 0.5rem;
+  user-select: none;
+}
+
+/* Dropdown detail & tombol salin */
+.log-toggle {
+  cursor: pointer;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.375rem;
+  user-select: none;
+}
+.log-toggle i {
+  transition: transform 0.2s ease;
+  margin-top: 0.1rem;
+}
+.log-toggle.open i { transform: rotate(90deg); }
+
+.log-detail {
+  margin: 0.25rem 0 0.5rem 1.25rem;
+  padding: 0.5rem;
+  background: rgba(0,0,0,0.02);
+  border-radius: 0.375rem;
+  border: 1px solid var(--color-border-light);
+  white-space: pre-wrap;
+  word-break: break-all;
+  display: none;
+}
+.dark .log-detail { background: rgba(0,0,0,0.15); }
+.log-detail.show { display: block; }
+
+.btn-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.15rem 0.4rem;
+  font-size: 0.65rem;
+  border-radius: 0.25rem;
+  background: var(--color-border-light);
+  margin-bottom: 0.25rem;
+  transition: all 0.15s ease;
+}
+.btn-copy:hover { background: rgba(59,130,246,0.15); color: #2563eb; }
+.btn-copy.copied { background: rgba(16,185,129,0.15); color: #059669; }
