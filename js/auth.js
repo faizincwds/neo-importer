@@ -2,7 +2,11 @@ import { NeoFeederAPI } from './api.js';
 import { STORAGE_KEYS } from './config.js';
 import { showToast } from './utils.js';
 
-export async function handleLogin(username, password) {
+export async function handleLogin(apiUrl, apiType, username, password) {
+  // Simpan konfigurasi API
+  localStorage.setItem(STORAGE_KEYS.API_URL, apiUrl);
+  localStorage.setItem(STORAGE_KEYS.API_TYPE, apiType);
+
   const api = new NeoFeederAPI();
   try {
     const tokenData = await api.getToken(username, password);
@@ -14,10 +18,10 @@ export async function handleLogin(username, password) {
 
     // Simpan username saja
     localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify({ username }));
-    // Hapus profil PT lama (jika ada) agar dashboard memuat ulang
     localStorage.removeItem(STORAGE_KEYS.PROFIL_PT);
 
     return true;
+    
   } catch (err) {
     console.error('Login error:', err);
     showToast('Login gagal: ' + err.message, 'error');

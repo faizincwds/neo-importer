@@ -1,3 +1,4 @@
+import { renderConfigView } from './configView.js';
 import { renderDashboard } from './dashboard.js';
 import { renderReferensiView } from './referensi.js';
 import { renderInsertView } from './insertWizard.js';
@@ -17,14 +18,17 @@ export function initViewManager(mainContent) {
       case 'import':
         renderInsertView(mainContent);
         break;
-      case 'referensi':
-        await renderReferensiView(mainContent);
-        break;
       case 'delete':
         renderDeleteView(mainContent);
         break;
       case 'update':
         renderUpdateView(mainContent);
+        break;
+      case 'referensi':
+        await renderReferensiView(mainContent);
+        break;
+      case 'config':
+        renderConfigView(mainContent);
         break;
       // ... lainnya
       default:

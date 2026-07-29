@@ -184,7 +184,7 @@ export class LookupEngine {
     if (this.cache[key]) return this.cache[key];
 
     try {
-      const res = await this.api.call('GetSemester');
+      const res = await this.api.call('GetSemester', { filter: `a_periode_aktif='1'` });
       const list = this.api.extractData(res) || [];
       const found = list.find(s => s.id_semester == clean);
       if (found) {
@@ -279,7 +279,25 @@ export class LookupEngine {
 
   
   // ======================== MAHASISWA ========================
-    async lookupRegistrasiMahasiswa(nim) {
+  async lookupMahasiswaByNim(nim) {
+    if (!nim) return null;
+    const key = `mhs_nim_${nim}`;
+    if (this.cache[key]) return this.cache[key];
+    try {
+      const list = await this.api.getListMahasiswa();
+      const arr = Array.isArray(list) ? list : (list?.data || []);
+      const found = arr.find(m => m.nim === nim);
+      if (found) {
+        this.cache[key] = { id_mahasiswa: found.id_mahasiswa, nama_mahasiswa: found.nama_mahasiswa };
+        return this.cache[key];
+      }
+    } catch (e) {
+      console.warn('Lookup mahasiswa by NIM failed', e);
+    }
+    return null;
+  }
+  
+  async lookupRegistrasiMahasiswa(nim) {
     if (!nim) return null;
     const key = `registrasi_mhs_${nim}`;
     if (this.cache[key]) return this.cache[key];
@@ -303,6 +321,76 @@ export class LookupEngine {
       console.warn('Lookup registrasi mahasiswa failed', e);
     }
     return null;
+  }
+
+  // Cari id_wilayah berdasarkan nama kecamatan (jika diperlukan)
+  async lookupWilayah(namaKecamatan) {
+    if (!namaKecamatan) return null;
+    const key = `wilayah_${namaKecamatan}`;
+    if (this.cache[key]) return this.cache[key];
+    try {
+      const list = await this.api.getWilayah();
+      const arr = Array.isArray(list) ? list : (list?.data || []);
+      const found = arr.find(w => 
+        w.nama_wilayah.toLowerCase().includes(namaKecamatan.toLowerCase())
+      );
+      if (found) {
+        this.cache[key] = found;
+        return found;
+      }
+    } catch (e) {
+      console.warn('Lookup wilayah gagal:', e);
+    }
+    return null;
+  }
+
+    // Cari data referensi berdasarkan nama (misal nama agama, pekerjaan, dll.)
+  async lookupByNama(method, nama, labelField) {
+    if (!nama) return null;
+    const clean = nama.trim().toLowerCase();
+    const key = `${method}_${clean}`;
+    if (this.cache[key]) return this.cache[key];
+    try {
+      const list = await this.api.call(method);   // panggil API langsung
+      const arr = Array.isArray(list?.data) ? list.data : (Array.isArray(list) ? list : []);
+      const found = arr.find(item => {
+        const itemName = (item[labelField] || '').toLowerCase();
+        return itemName === clean || itemName.includes(clean);
+      });
+      if (found) {
+        this.cache[key] = found;
+        return found;
+      }
+    } catch (e) {
+      console.warn(`Lookup ${method} failed`, e);
+    }
+    return null;
+  }
+
+  // Method yang dipanggil dari performLookup
+  async lookupReferensi(fieldNama, fieldId, method, labelField, idProperty, row) {
+    const nama = row[fieldNama];
+    const id = row[fieldId];
+    if (!nama || String(nama).trim() === '') return;
+    if (id && String(id).trim() !== '') return;
+
+    try {
+      const ref = await this.lookupByNama(method, String(nama).trim(), labelField);
+      if (ref) {
+        const idValue = ref[idProperty];
+        if (idValue !== undefined && idValue !== null) {
+          row[fieldId] = idValue;
+        } else {
+          if (!row.__errors) row.__errors = {};
+          row.__errors[fieldNama] = `ID untuk ${nama} tidak ditemukan di struktur data`;
+        }
+      } else {
+        if (!row.__errors) row.__errors = {};
+        row.__errors[fieldNama] = `Referensi "${nama}" tidak ditemukan`;
+      }
+    } catch (e) {
+      console.warn(`Lookup referensi ${method} gagal:`, e);
+    }
   }
 
   // ======================= EVALUASI ========================

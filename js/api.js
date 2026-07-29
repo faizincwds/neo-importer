@@ -11,19 +11,25 @@ export class NeoFeederAPI {
   }
 
   async call(method, params = {}) {
+    // Ambil dari localStorage, fallback ke default
+    const baseUrl = localStorage.getItem(STORAGE_KEYS.API_URL) || 'http://localhost:3003';
+    const apiType = localStorage.getItem(STORAGE_KEYS.API_TYPE) || 'live2.php';
+    const url = `${baseUrl}/ws/${apiType}`;   // <-- gunakan URL lengkap
+
     const payload = {
       act: method,
       token: this.token,
       ...params,
     };
 
+    console.log(`[URL API] Request`, url);
     console.log(`[API] Request ${method}`, payload);
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 detik timeout
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
 
     try {
-      const response = await fetch(API_BASE, {
+      const response = await fetch(url, {   // <-- bukan API_BASE
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -51,8 +57,6 @@ export class NeoFeederAPI {
         console.error(`[API] Respons bukan JSON: ${text.substring(0, 100)}`);
         throw new Error('Respons server bukan JSON yang valid');
       }
-
-      console.log(`[API] Response ${method}`, json);
 
       if (json.error) {
         const msg = typeof json.error === 'string' ? json.error : json.error_description || 'Unknown error';
@@ -124,14 +128,14 @@ export class NeoFeederAPI {
     throw new Error('Token tidak ditemukan dalam respons');
   }
 
-
   async getDictionary(fungsi = null) {
     const params = {};
     if (fungsi) params.fungsi = fungsi;
     const res = await this.call('GetDictionary', params);
     return this.extractData(res);
   }
-
+  
+// REFERENCE
   async getProfilPT() {
     const res = await this.call('GetProfilPT');
     return this.extractData(res);
@@ -201,7 +205,6 @@ export class NeoFeederAPI {
     return this.extractData(res);
   }
 
-  
   async getListKelasKuliah(filter = {}) {
     const conditions = [];
     if (filter.id_semester) conditions.push(`id_semester = '${filter.id_semester}'`);
@@ -212,7 +215,6 @@ export class NeoFeederAPI {
     return this.extractData(res);
   }
   
-
   async getListPesertaKelasKuliah(filter = {}) {
     const conditions = [];
     if (filter.id_kelas_kuliah) conditions.push(`id_kelas_kuliah = '${filter.id_kelas_kuliah}'`);
@@ -222,7 +224,6 @@ export class NeoFeederAPI {
     return this.extractData(res);
   }
 
-    // Di bagian Referensi
   async getListPenugasanDosen(filter = {}) {
     let filterStr = '';
     if (filter.nuptk) filterStr = `nuptk = '${filter.nuptk}'`;
@@ -263,12 +264,6 @@ export class NeoFeederAPI {
     return this.extractData(res);
   }
 
-
-  async insertDosenPengajarKelasKuliah(record) {
-    return this.callSafe('InsertDosenPengajarKelasKuliah', { record: JSON.stringify(record) });
-  }
-
-  // Mencari aktivitas mengajar dosen
   async getDosenPengajarKelasKuliah(filter = {}) {
     const conditions = [];
     if (filter.id_semester) conditions.push(`id_semester = '${filter.id_semester}'`);
@@ -279,16 +274,43 @@ export class NeoFeederAPI {
     return this.extractData(res);
   }
 
+  async getWilayah() {
+    const res = await this.call('GetWilayah');
+    return this.extractData(res);
+  }
 
-  // CRUD
+    // Generic method untuk referensi yang hanya butuh act
+  async getAgama() { const res = await this.call('GetAgama'); return this.extractData(res); }
+  async getJenisTinggal() { const res = await this.call('GetJenisTinggal'); return this.extractData(res); }
+  async getAlatTransportasi() { const res = await this.call('GetAlatTransportasi'); return this.extractData(res); }
+  async getWilayah() { const res = await this.call('GetWilayah'); return this.extractData(res); }
+  async getJenjangPendidikan() { const res = await this.call('GetJenjangPendidikan'); return this.extractData(res); }
+  async getPekerjaan() { const res = await this.call('GetPekerjaan'); return this.extractData(res); }
+  async getPenghasilan() { const res = await this.call('GetPenghasilan'); return this.extractData(res); }
+  async getKebutuhanKhusus() { const res = await this.call('GetKebutuhanKhusus'); return this.extractData(res); }
+
+  // END REFERENCE
+
+
+  // INSERT
+  async insertBiodataMahasiswa(record) {
+    const { _display, ...cleanRecord } = record;
+    return this.callSafe('InsertBiodataMahasiswa', { record: cleanRecord });
+  }
+
   async insertKelasKuliah(record) {
-    return this.callSafe('InsertKelasKuliah', { record: JSON.stringify(record) });
+    const { _display, ...cleanRecord } = record;
+    return this.callSafe('InsertKelasKuliah', { record: cleanRecord });
+  }
+
+  async insertDosenPengajarKelasKuliah(record) {
+    const { _display, ...cleanRecord } = record; 
+    return this.callSafe('InsertDosenPengajarKelasKuliah', { record: cleanRecord });
   }
 
   async insertPesertaKelasKuliah(record) {
     const { _display, ...cleanRecord } = record; 
     return this.callSafe('InsertPesertaKelasKuliah', { record: cleanRecord });
-    // return this.callSafe('InsertPesertaKelasKuliah', { record: JSON.stringify(cleanRecord) });
   }
   
 
@@ -297,6 +319,12 @@ export class NeoFeederAPI {
     return this.callSafe('InsertKomponenEvaluasiKelas', { record: cleanRecord });
   }
 
+  async insertRencanaEvaluasi(record) {
+    const { _display, ...cleanRecord } = record; 
+    return this.callSafe('InsertRencanaEvaluasi', { record: cleanRecord });
+  }
+
+  // UPDATE
   async updateKomponenEvaluasiKelas(payload) {
     return this.callSafe('UpdateKomponenEvaluasiKelas', {
       key: { id_komponen_evaluasi: payload.key.id_komponen_evaluasi },
@@ -311,18 +339,14 @@ export class NeoFeederAPI {
     });
   }
 
-  async insertRencanaEvaluasi(record) {
-    return this.callSafe('InsertRencanaEvaluasi', { record: JSON.stringify(record) });
-  }
-
   async updateNilaiPerkuliahanKelas(payload) {
     return this.callSafe('UpdateNilaiPerkuliahanKelas', {
       key: payload.key,
-      record: payload.record   // objek langsung, tanpa JSON.stringify
+      record: payload.record
     });
   }
 
-
+  // DELETE
   async deleteRencanaPembelajaran(id_rencana_ajar) {
     return this.callSafe('DeleteRencanaPembelajaran', { id_rencana_ajar });
   }
@@ -333,11 +357,14 @@ export class NeoFeederAPI {
     });
   }
 
-  async deleteKelasKuliah(id_kelas_kuliah) {
-    return this.callSafe('DeleteKelasKuliah', { id_kelas_kuliah });
+  async deleteKelasKuliah(payload) {
+    return this.callSafe('DeleteKelasKuliah', { 
+      key: { 
+        id_kelas_kuliah: payload.id_kelas_kuliah 
+      } 
+    });
   }
 
-  // Menghapus aktivitas mengajar berdasarkan id_aktivitas_mengajar
   async deleteDosenPengajarKelasKuliah(payload) {
     return this.callSafe('DeleteDosenPengajarKelasKuliah', { 
       key: { 

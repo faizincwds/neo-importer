@@ -7,24 +7,107 @@ import { Validator } from './validator.js';
 import { sanitizeText, showToast } from './utils.js';
 
 const METHOD_GROUPS = {
-  'Evaluasi': [
-    { value: 'DeleteRencanaEvaluasi', label: '[Hapus] Rencana Evaluasi (Mata Kuliah) - hanya bisa UPDATE' },
-    { value: 'DeleteKomponenEvaluasiKelas', label: '[Hapus] Komponen Evaluasi (Kelas) - hanya bisa UPDATE' },
+  'Kelas Kuliah (KRS)': [
+    { value: 'DeleteKelasKuliah', label: '[Delete] Kelas Perkuliah' },
+    { value: 'DeleteDosenPengajarKelasKuliah', label: '[Delete] Dosen Pengajar Kelas' },
+    { value: 'DeletePesertaKelasKuliah', label: '[Delete] Peserta Kelas' },
   ],
-  'Pembelajaran': [
-    { value: 'DeleteRencanaPembelajaran', label: '[Hapus] Rencana Pembelajaran (Mata Kuliah) - belum dicoba' },
-  ],
+  // 'Evaluasi': [
+  //   { value: 'DeleteRencanaEvaluasi', label: '[Delete] Rencana Evaluasi (Mata Kuliah) - hanya bisa UPDATE' },
+  //   { value: 'DeleteKomponenEvaluasiKelas', label: '[Delete] Komponen Evaluasi (Kelas) - hanya bisa UPDATE' },
+  // ],
+  // 'Pembelajaran': [
+  //   { value: 'DeleteRencanaPembelajaran', label: '[Delete] Rencana Pembelajaran (Mata Kuliah) - belum dicoba' },
+  // ],
+  
+};
 
-  'Kelas Perkuliahan': [
-    { value: 'DeletePesertaKelasKuliah', label: '[Hapus] Peserta Kelas' },
-    { value: 'DeleteDosenPengajarKelasKuliah', label: '[Hapus] Dosen Pengajar (Kelas)' },
-
-  ],
+const TEMPLATE_FILES = {
+  DeleteKelasKuliah               : 'del_kelas_kuliah.xlsx',
+  DeleteDosenPengajarKelasKuliah  : 'del_dosen_ajar_kelas.xlsx',
+  DeletePesertaKelasKuliah        : 'del_peserta_kelas.xlsx',
 };
 
 
 const METHOD_CONFIG = {
 
+  DeleteKelasKuliah: {
+    targetFields: [
+      'periode',
+      'kode_mata_kuliah', 'nama_mata_kuliah',
+      'kode_prodi','nama_prodi',
+      'nama_kelas',
+    ],
+    requiredFields: ['periode','kode_mata_kuliah','nama_kelas',],
+    transformFn: function(row) {
+      const payload = {
+        id_kelas_kuliah: row.__id_kelas_kuliah || '',
+      };
+      // Simpan _display untuk log
+      payload._display = {
+        kode_mata_kuliah: row.kode_mata_kuliah,
+        nama_mata_kuliah: row.nama_mata_kuliah,
+        kode_prodi: row.kode_prodi,
+        nama_prodi: row.nama_prodi,
+        nama_kelas: row.nama_kelas,
+        aksi: 'Hapus Kelas'
+      };
+
+      console.log('DeleteKelasKuliah payload:', payload);
+      return payload;
+    },
+
+    performLookup: async function(row, lookupEngine) {
+      row.__errors = {};
+
+      // 1. Semester
+      if (row.periode) {
+        const sem = await lookupEngine.lookupSemester(String(row.periode).trim());
+        row.__id_semester = sem?.id_semester || String(row.periode).trim();
+      } else {
+        row.__errors.periode = 'Periode harus diisi';
+      }
+
+      // 2. Mata kuliah (ambil id_prodi dari MK)
+      if (row.kode_mata_kuliah) {
+        const mk = await lookupEngine.lookupMataKuliah(String(row.kode_mata_kuliah).trim());
+        if (mk) {
+          row.nama_mata_kuliah = mk.nama_mata_kuliah || row.nama_mata_kuliah;
+          // Simpan id_prodi dari MK untuk lookup prodi
+          if (mk.id_prodi || mk._raw?.id_prodi) {
+            const prodi = await lookupEngine.lookupProdiById(mk.id_prodi || mk._raw?.id_prodi);
+            if (prodi) {
+              row.kode_prodi = prodi.kode_prodi;   // kode pendek, misal "86231"
+              row.nama_prodi = prodi.nama_prodi || row.nama_prodi;
+            }
+          }
+        }
+      }
+
+      // 3. Kelas → id_kelas_kuliah
+      const kodeMk = String(row.kode_mata_kuliah || '').trim();
+      const namaKelas = String(row.nama_kelas || '').trim();
+      const idSem = row.__id_semester;
+      if (kodeMk && namaKelas && idSem) {
+        const kelas = await lookupEngine.lookupDetailKelasKuliah(kodeMk, namaKelas, idSem);
+        if (kelas) {
+          row.__id_kelas_kuliah = kelas.id_kelas_kuliah;
+          row.status = 'Siap dihapus';
+        } else {
+          row.__errors.nama_kelas = 'Kelas tidak ditemukan';
+        }
+      } else {
+        if (!kodeMk) row.__errors.kode_mata_kuliah = 'Kode MK kosong';
+        if (!namaKelas) row.__errors.nama_kelas = 'Nama kelas kosong';
+        if (!idSem) row.__errors.periode = 'Semester tidak valid';
+      }
+
+      const errs = Object.values(row.__errors).filter(m => m);
+      row.status = errs.length > 0 ? errs.join('; ') : row.status || 'OK';
+    }
+  },
+
+  // WS tidak mendukung DELETE DeleteKomponenEvaluasiKelas
   DeleteRencanaEvaluasi: {
     targetFields: [
       'kode_mata_kuliah', 'nama_mata_kuliah',
@@ -96,6 +179,7 @@ const METHOD_CONFIG = {
     }
   },
   
+  // WS tidak mendukung DELETE DeleteKomponenEvaluasiKelas 
   DeleteKomponenEvaluasiKelas: {
     targetFields: [
       'periode',
@@ -199,6 +283,7 @@ const METHOD_CONFIG = {
     }
   },
 
+  // belum dicoba, karena WS tidak mendukung DELETE DeleteRencanaPembelajaran
   DeleteRencanaPembelajaran: {
     targetFields: [
       'kode_mata_kuliah', 'nama_mata_kuliah',
@@ -232,6 +317,7 @@ const METHOD_CONFIG = {
     }
   },
 
+  // DELETE Dosen Pengajar Kelas
   DeleteDosenPengajarKelasKuliah: {
     targetFields: [
       'periode',
@@ -311,6 +397,7 @@ const METHOD_CONFIG = {
     }
   },
 
+  // DELETE Peserta Kelas
   DeletePesertaKelasKuliah: {
     targetFields: [
       'periode',
@@ -389,7 +476,7 @@ const METHOD_CONFIG = {
 };
 
 export function renderDeleteView(container) {
-  let currentMethod = 'DeleteRencanaEvaluasi';
+  let currentMethod = 'DeleteKelasKuliah';
   let rawExcelData = null;
   let headers = [];
   let mapping = {};
@@ -401,21 +488,25 @@ export function renderDeleteView(container) {
   let importProcess = null;
 
   function getConfig() {
-    return METHOD_CONFIG[currentMethod] || METHOD_CONFIG['DeleteRencanaEvaluasi'];
+    return METHOD_CONFIG[currentMethod] || METHOD_CONFIG['DeleteKelasKuliah'];
   }
 
   container.innerHTML = `
+  
     <div id="wizard-container" class="space-y-6">
       <div id="step1" class="glass p-6 rounded-2xl">
-        <h3 class="text-xl font-bold mb-4">Step 1: Pilih Method Import</h3>
-          <select id="method-select" class="w-full p-3 rounded-xl bg-white dark:bg-gray-800">
+        <h3 class="text-xl font-bold mb-4">Step 1: Pilih Method Delete</h3>
+          <select id="method-select" class="w-full p-3 rounded-xl cursor-pointer bg-white dark:bg-gray-800">
+            <option value="">--Pilih Method--</option>
             ${Object.entries(METHOD_GROUPS).map(([groupName, methods]) => `
               <optgroup label="${groupName}">
                 ${methods.map(m => `<option value="${m.value}">${m.label}</option>`).join('')}
               </optgroup>
             `).join('')}
           </select>
-        <button id="next-to-step2" class="mt-4 px-6 py-2 bg-blue-600 text-white rounded-xl">Selanjutnya</button>
+        <button id="template-btn" class="mt-2 px-6 py-2 bg-teal-600 text-white rounded-xl cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed" disabled>📝 Unduh Template Xlxs</button>
+        <button id="next-to-step2" class="mt-4 px-6 py-2 bg-blue-600 text-white rounded-xl cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed" disabled>Selanjutnya</button>
+
       </div>
       <div id="step2" class="glass p-6 rounded-2xl hidden">
         <h3 class="text-xl font-bold mb-4">Step 2: Upload Excel & Auto Mapping</h3>
@@ -431,34 +522,67 @@ export function renderDeleteView(container) {
         <button id="run-lookup" class="mt-4 px-6 py-2 bg-green-600 text-white rounded-xl hidden">Jalankan Ulang Lookup</button>
         <div id="grid-container" class="mt-6 overflow-auto"></div>
         <div class="mt-4 flex space-x-2 flex-wrap gap-y-2">
-          <button id="delete-empty-btn" class="px-4 py-2 bg-yellow-500 text-white rounded-xl">Hapus Baris Kosong</button>
-          <button id="delete-dup-btn" class="px-4 py-2 bg-yellow-500 text-white rounded-xl">Hapus Duplikat</button>
-          <button id="restore-btn" class="px-4 py-2 bg-gray-500 text-white rounded-xl">Restore</button>
-          <button id="next-to-step3" class="px-6 py-2 bg-blue-600 text-white rounded-xl ml-auto">Delete Data</button>
+          <button id="delete-empty-btn" class="px-4 py-2 bg-yellow-500 text-white rounded-xl cursor-pointer">Hapus Baris Kosong</button>
+          <button id="delete-dup-btn" class="px-4 py-2 bg-yellow-500 text-white rounded-xl cursor-pointer">Hapus Duplikat</button>
+          <button id="restore-btn" class="px-4 py-2 bg-gray-500 text-white rounded-xl cursor-pointer">Restore</button>
+          <button id="next-to-step3" class="px-6 py-2 bg-blue-600 text-white rounded-xl cursor-pointer ml-auto">Import Data</button>
         </div>
       </div>
       <div id="step3" class="glass p-6 rounded-2xl hidden">
-        <h3 class="text-xl font-bold mb-4">Step 3: Delete Progress</h3>
+        <h3 class="text-xl font-bold mb-4">Step 3: Import Progress</h3>
         <div id="progress-bar" class="w-full bg-gray-300 dark:bg-gray-700 rounded-full h-4 mb-4">
           <div id="progress-fill" class="bg-blue-600 h-4 rounded-full" style="width:0%"></div>
         </div>
-        <div id="delete-stats" class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+        <div id="import-stats" class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
           <div>Success: <span id="stat-success">0</span></div>
           <div>Failed: <span id="stat-failed">0</span></div>
           <div>Skipped: <span id="stat-skipped">0</span></div>
           <div>ETA: <span id="stat-eta">-</span></div>
         </div>
-        <div id="delete-log" class="mt-4 h-48 overflow-y-auto bg-gray-100 dark:bg-gray-800 p-3 rounded-xl text-sm font-mono"></div>
+        <div id="import-log" class="mt-4 h-48 overflow-y-auto bg-gray-100 dark:bg-gray-800 p-3 rounded-xl text-sm font-mono"></div>
         <div class="flex space-x-2 mt-4">
-          <button id="pause-btn" class="px-4 py-2 bg-yellow-500 text-white rounded-xl">Pause</button>
-          <button id="resume-btn" class="px-4 py-2 bg-green-500 text-white rounded-xl hidden">Resume</button>
-          <button id="cancel-btn" class="px-4 py-2 bg-red-500 text-white rounded-xl">Cancel</button>
+          <button id="pause-btn" class="px-4 py-2 bg-yellow-500 text-white rounded-xl cursor-pointer">Pause</button>
+          <button id="resume-btn" class="px-4 py-2 bg-green-500 text-white rounded-xl cursor-pointer hidden">Resume</button>
+          <button id="cancel-btn" class="px-4 py-2 bg-red-500 text-white rounded-xl cursor-pointer">Cancel</button>
         </div>
       </div>
-    </div>
+    </div>    
   `;
 
-  document.getElementById('next-to-step2').addEventListener('click', () => {
+  const methodSelect = document.getElementById('method-select');
+  const templateBtn = document.getElementById('template-btn');
+  const nextBtn = document.getElementById('next-to-step2');
+
+  // Aktifkan tombol unduh hanya setelah metode dipilih
+  methodSelect.addEventListener('change', () => {
+    const selected = methodSelect.value;
+    templateBtn.disabled = !selected;
+    nextBtn.disabled = !selected;      // ← tambahkan
+  });
+
+  // Inisialisasi awal: disable semua jika tidak ada pilihan (fallback)
+  nextBtn.disabled = !methodSelect.value;
+  templateBtn.disabled = !methodSelect.value;
+
+  templateBtn.addEventListener('click', () => {
+    const selectedMethod = methodSelect.value;
+    if (!selectedMethod) return showToast('Pilih metode terlebih dahulu', 'warning');
+
+    // Nama file sesuai method
+    const templateFileName = TEMPLATE_FILES[selectedMethod] || '';
+    const filePath = `template/delete/${templateFileName}`;
+
+    // Buat link unduh sementara
+    const link = document.createElement('a');
+    link.href = filePath;
+    link.download = templateFileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  });
+
+
+  nextBtn.addEventListener('click', () => {
     currentMethod = document.getElementById('method-select').value;
     document.getElementById('step1').classList.add('hidden');
     document.getElementById('step2').classList.remove('hidden');
@@ -667,7 +791,7 @@ export function renderDeleteView(container) {
         document.getElementById('stat-eta').textContent = progress.stats.eta;
       }
 
-      const logEl = document.getElementById('delete-log');
+      const logEl = document.getElementById('import-log');
       if (logEl && progress.logs) {
         logEl.innerHTML = progress.logs.map(log => {
           const icon = log.type === 'success' ? '✅' : (log.type === 'failed' ? '❌' : '⚠️');
@@ -676,26 +800,26 @@ export function renderDeleteView(container) {
           
           let mk = disp.kode_mata_kuliah || row.kode_mata_kuliah || row.id_matkul || '?';
           let nama = disp.nama_mata_kuliah || row.nama_mata_kuliah || row.nama_mahasiswa || row.nama_dosen || disp.nama_dosen || disp.nama_mahasiswa || disp.nama_evaluasi || disp.nama_komponen || '';
-          let kelas = disp.kelas || row.kelas || row.nama_kelas_kuliah || '?';
+          let kelas = disp.kelas || disp.nama_kelas || row.kelas || row.nama_kelas_kuliah || '?';
           let aksi = disp.aksi || row.tipe || currentMethod;
           let status = log.message;
 
           const nim = disp.nim || '';
           const extra = nim ? ` (NIM: ${nim})` : '';
           
-          let info = `[${mk}] | kelas: [${kelas}] | ${nama} | aksi: [${aksi}] | status: ${status}`;
-          if (info.length > 100) info = info.substring(0, 97) + '...';
+          let info = `[${mk}] ${nama} | [${kelas}] ${aksi} | Ket: ${status}`;
+          if (info.length > 155) info = info.substring(0, 150) + '...';
           
           let detail = '';
           if (log.type === 'failed') {
-            detail = `<br><small class="text-gray-400">Payload: ${JSON.stringify(row)}</small>`;
+            detail = `<br><small class="text-gray-400">Payload: ${JSON.stringify(disp)}</small>`;
           }
-           return `<div class="py-1">${icon} ${info}${detail}</div>`;
+           return `<div class="py-1">${icon} ${info} ${detail}</div>`;
         }).join('');
         logEl.scrollTop = logEl.scrollHeight;
       }
     }).then(async (result) => {
-        const logEl = document.getElementById('delete-log');
+        const logEl = document.getElementById('import-log');
         // Untuk metode yang menghasilkan banyak record (UpdateNilaiLengkap), tampilkan ringkasan
         if (currentMethod === 'UpdateNilaiLengkap' && importProcess.realtimeLogs) {
             const logs = importProcess.realtimeLogs;
@@ -738,8 +862,7 @@ export function renderDeleteView(container) {
                 if (otherLogs.length > 0) parts.push(`${otherLogs.length} Lainnya`);
                 const detailStr = `(${successLogs.length}) Berhasil${parts.length > 0 ? ' | ' + parts.join(' + ') : ''}`;
 
-                // summaryHTML += `<div class="py-1">✅ [${mk}] | ${kelas} | aksi: ${aksiStr} | status: ${detailStr}</div>`;
-                summaryHTML += `<div class="py-1">✅ [${mk}] | [${kelas}] | ${nama} | Aksi: [${aksiStr}] | Status: ${detailStr} </div>`;
+                summaryHTML += `<div class="py-1">✅ [${mk}] ${nama} | [${kelas}] ${aksiStr} | Ket: ${detailStr} </div>`;
             }
 
             // Detail gagal
@@ -750,7 +873,7 @@ export function renderDeleteView(container) {
                 const nama = disp.nama_mata_kuliah || disp.nama_dosen || disp.nama_mahasiswa || disp.nama_evaluasi || disp.nama_komponen || '';
                 const kelas = disp.kelas || disp.nama_kelas_kuliah || '?';
                 const aksi = disp.tipe || currentMethod;
-                summaryHTML += `<div class="py-1">❌ [${mk}] | kelas: [${kelas}] | ${nama} | aksi: [${aksi}] | status: ${log.message}</div>`;
+                summaryHTML += `<div class="py-1">❌ [${mk}] ${nama} | [${kelas}] ${aksi} Ket: ${log.message}</div>`;
             });
 
             // Skipped
@@ -761,9 +884,7 @@ export function renderDeleteView(container) {
             logEl.innerHTML = summaryHTML;
         }
         // Untuk metode lain, biarkan log realtime yang sudah terbentuk (tidak diubah)
-        if (result.failed > 0 && importProcess.realtimeLogs.some(l => l.message.includes('Timeout'))) {
-            showToast('Server tidak merespons. Silakan coba lagi atau hubungi administrator.', 'error');
-        }
+        
         showToast(`Import selesai: ${result.success} sukses, ${result.failed} gagal`, result.failed ? 'error' : 'success');
 
       });

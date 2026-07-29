@@ -8,12 +8,19 @@ import { sanitizeText, showToast } from './utils.js';
 
 
 const METHOD_GROUPS = {
-  'Komponen Evaluasi': [
-    { value: 'UpdateKomponenEvaluasiKelas', label: '[Edit] Komponen Evaluasi Kelas' },
+  'Kelas Kuliah (KRS)': [
+    { value: 'UpdateKomponenEvaluasiKelas', label: '[Update] Komponen Evaluasi Kelas' },
   ],
-  'Nilai': [
-    { value: 'UpdateNilaiLengkap', label: '[Input] Nilai Perkuliahan & Komponen' },
-  ]
+  'Nilai Perkuliahan Kelas (KHS)': [
+    { value: 'UpdateNilaiPerkuliahanKelas', label: '[Update] Nilai Perkuliahan Kelas' },
+    { value: 'UpdateNilaiPerkuliahanKelasKomponenEvaluasi', label: '[Update] Nilai & Komponen Kelas Perkuliahan' },
+  ],
+};
+
+const TEMPLATE_FILES = {
+  UpdateNilaiPerkuliahanKelas                 : 'only_update_nilai_perkuliahan_kelas.xlsx',
+  UpdateNilaiPerkuliahanKelasKomponenEvaluasi : 'all_update_nilai_perkuliahan_dan_komponen_kelas.xlsx',
+  UpdateKomponenEvaluasiKelas                 : 'only_update_komponen_kelas.xlsx',
 };
 
 const METHOD_CONFIG = {
@@ -52,19 +59,19 @@ const METHOD_CONFIG = {
           records.push({
               key: { id_komponen_evaluasi: existingId },
               record: {
-              id_kelas_kuliah: row.__id_kelas_kuliah || '',
-              id_jenis_evaluasi: def.jenis,
-              nama: def.nama,
-              nama_inggris: def.nama_inggris,
-              nomor_urut: def.urut,
-              bobot_evaluasi: bobot
+                id_kelas_kuliah: row.__id_kelas_kuliah || '',
+                id_jenis_evaluasi: def.jenis,
+                nama: def.nama,
+                nama_inggris: def.nama_inggris,
+                nomor_urut: def.urut,
+                bobot_evaluasi: bobot
               },
               _display: {
-              kode_mata_kuliah: row.kode_mata_kuliah,
-              komponen: def.nama,
-              bobot: bobot,
-              kelas: row.nama_kelas,
-              aksi: 'update'
+                kode_mata_kuliah: row.kode_mata_kuliah,
+                komponen: def.nama,
+                bobot: bobot,
+                kelas: row.nama_kelas,
+                aksi: 'update'
               }
           });
           } else if (bobot > 0) {
@@ -407,7 +414,7 @@ const METHOD_CONFIG = {
 
 
 export function renderUpdateView(container) {
-  let currentMethod = 'UpdateKomponenEvaluasiKelas';
+  let currentMethod = 'UpdateNilaiPerkuliahanKelas';
   let rawExcelData = null;
   let headers = [];
   let mapping = {};
@@ -419,21 +426,25 @@ export function renderUpdateView(container) {
   let importProcess = null;
 
   function getConfig() {
-    return METHOD_CONFIG[currentMethod] || METHOD_CONFIG['UpdateKomponenEvaluasiKelas'];
+    return METHOD_CONFIG[currentMethod] || METHOD_CONFIG['UpdateNilaiPerkuliahanKelas'];
   }
 
   container.innerHTML = `
+  
     <div id="wizard-container" class="space-y-6">
       <div id="step1" class="glass p-6 rounded-2xl">
-        <h3 class="text-xl font-bold mb-4">Step 1: Pilih Method Import</h3>
-          <select id="method-select" class="w-full p-3 rounded-xl bg-white dark:bg-gray-800">
+        <h3 class="text-xl font-bold mb-4">Step 1: Pilih Method Update</h3>
+          <select id="method-select" class="w-full p-3 rounded-xl cursor-pointer bg-white dark:bg-gray-800">
+            <option value="">--Pilih Method--</option>
             ${Object.entries(METHOD_GROUPS).map(([groupName, methods]) => `
               <optgroup label="${groupName}">
                 ${methods.map(m => `<option value="${m.value}">${m.label}</option>`).join('')}
               </optgroup>
             `).join('')}
           </select>
-        <button id="next-to-step2" class="mt-4 px-6 py-2 bg-blue-600 text-white rounded-xl">Selanjutnya</button>
+        <button id="template-btn" class="mt-2 px-6 py-2 bg-teal-600 text-white rounded-xl cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed" disabled>📝 Unduh Template Xlxs</button>
+        <button id="next-to-step2" class="mt-4 px-6 py-2 bg-blue-600 text-white rounded-xl cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed" disabled>Selanjutnya</button>
+
       </div>
       <div id="step2" class="glass p-6 rounded-2xl hidden">
         <h3 class="text-xl font-bold mb-4">Step 2: Upload Excel & Auto Mapping</h3>
@@ -449,10 +460,10 @@ export function renderUpdateView(container) {
         <button id="run-lookup" class="mt-4 px-6 py-2 bg-green-600 text-white rounded-xl hidden">Jalankan Ulang Lookup</button>
         <div id="grid-container" class="mt-6 overflow-auto"></div>
         <div class="mt-4 flex space-x-2 flex-wrap gap-y-2">
-          <button id="delete-empty-btn" class="px-4 py-2 bg-yellow-500 text-white rounded-xl">Hapus Baris Kosong</button>
-          <button id="delete-dup-btn" class="px-4 py-2 bg-yellow-500 text-white rounded-xl">Hapus Duplikat</button>
-          <button id="restore-btn" class="px-4 py-2 bg-gray-500 text-white rounded-xl">Restore</button>
-          <button id="next-to-step3" class="px-6 py-2 bg-blue-600 text-white rounded-xl ml-auto">Import Data</button>
+          <button id="delete-empty-btn" class="px-4 py-2 bg-yellow-500 text-white rounded-xl cursor-pointer">Hapus Baris Kosong</button>
+          <button id="delete-dup-btn" class="px-4 py-2 bg-yellow-500 text-white rounded-xl cursor-pointer">Hapus Duplikat</button>
+          <button id="restore-btn" class="px-4 py-2 bg-gray-500 text-white rounded-xl cursor-pointer">Restore</button>
+          <button id="next-to-step3" class="px-6 py-2 bg-blue-600 text-white rounded-xl cursor-pointer ml-auto">Import Data</button>
         </div>
       </div>
       <div id="step3" class="glass p-6 rounded-2xl hidden">
@@ -468,15 +479,48 @@ export function renderUpdateView(container) {
         </div>
         <div id="import-log" class="mt-4 h-48 overflow-y-auto bg-gray-100 dark:bg-gray-800 p-3 rounded-xl text-sm font-mono"></div>
         <div class="flex space-x-2 mt-4">
-          <button id="pause-btn" class="px-4 py-2 bg-yellow-500 text-white rounded-xl">Pause</button>
-          <button id="resume-btn" class="px-4 py-2 bg-green-500 text-white rounded-xl hidden">Resume</button>
-          <button id="cancel-btn" class="px-4 py-2 bg-red-500 text-white rounded-xl">Cancel</button>
+          <button id="pause-btn" class="px-4 py-2 bg-yellow-500 text-white rounded-xl cursor-pointer">Pause</button>
+          <button id="resume-btn" class="px-4 py-2 bg-green-500 text-white rounded-xl cursor-pointer hidden">Resume</button>
+          <button id="cancel-btn" class="px-4 py-2 bg-red-500 text-white rounded-xl cursor-pointer">Cancel</button>
         </div>
       </div>
-    </div>
+    </div>    
   `;
 
-  document.getElementById('next-to-step2').addEventListener('click', () => {
+  const methodSelect = document.getElementById('method-select');
+  const templateBtn = document.getElementById('template-btn');
+  const nextBtn = document.getElementById('next-to-step2');
+
+  // Aktifkan tombol unduh hanya setelah metode dipilih
+  methodSelect.addEventListener('change', () => {
+    const selected = methodSelect.value;
+    templateBtn.disabled = !selected;
+    nextBtn.disabled = !selected;      // ← tambahkan
+  });
+
+  // Inisialisasi awal: disable semua jika tidak ada pilihan (fallback)
+  nextBtn.disabled = !methodSelect.value;
+  templateBtn.disabled = !methodSelect.value;
+
+  templateBtn.addEventListener('click', () => {
+    const selectedMethod = methodSelect.value;
+    if (!selectedMethod) return showToast('Pilih metode terlebih dahulu', 'warning');
+
+    // Nama file sesuai method
+    const templateFileName = TEMPLATE_FILES[selectedMethod] || '';
+    const filePath = `template/update/${templateFileName}`;
+
+    // Buat link unduh sementara
+    const link = document.createElement('a');
+    link.href = filePath;
+    link.download = templateFileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  });
+
+
+  nextBtn.addEventListener('click', () => {
     currentMethod = document.getElementById('method-select').value;
     document.getElementById('step1').classList.add('hidden');
     document.getElementById('step2').classList.remove('hidden');
@@ -694,21 +738,21 @@ export function renderUpdateView(container) {
           
           let mk = disp.kode_mata_kuliah || row.kode_mata_kuliah || row.id_matkul || '?';
           let nama = disp.nama_mata_kuliah || row.nama_mata_kuliah || row.nama_mahasiswa || row.nama_dosen || disp.nama_dosen || disp.nama_mahasiswa || disp.nama_evaluasi || disp.nama_komponen || '';
-          let kelas = disp.kelas || row.kelas || row.nama_kelas_kuliah || '?';
+          let kelas = disp.kelas || disp.nama_kelas || row.kelas || row.nama_kelas_kuliah || '?';
           let aksi = disp.aksi || row.tipe || currentMethod;
           let status = log.message;
 
           const nim = disp.nim || '';
           const extra = nim ? ` (NIM: ${nim})` : '';
           
-          let info = `[${mk}] | kelas: [${kelas}] | ${nama} | aksi: [${aksi}] | status: ${status}`;
-          if (info.length > 100) info = info.substring(0, 97) + '...';
+          let info = `[${mk}] ${nama} | [${kelas}] ${aksi} | Ket: ${status}`;
+          if (info.length > 155) info = info.substring(0, 150) + '...';
           
           let detail = '';
           if (log.type === 'failed') {
-            detail = `<br><small class="text-gray-400">Payload: ${JSON.stringify(row)}</small>`;
+            detail = `<br><small class="text-gray-400">Payload: ${JSON.stringify(disp)}</small>`;
           }
-           return `<div class="py-1">${icon} ${info}${detail}</div>`;
+           return `<div class="py-1">${icon} ${info} ${detail}</div>`;
         }).join('');
         logEl.scrollTop = logEl.scrollHeight;
       }
@@ -756,8 +800,7 @@ export function renderUpdateView(container) {
                 if (otherLogs.length > 0) parts.push(`${otherLogs.length} Lainnya`);
                 const detailStr = `(${successLogs.length}) Berhasil${parts.length > 0 ? ' | ' + parts.join(' + ') : ''}`;
 
-                // summaryHTML += `<div class="py-1">✅ [${mk}] | ${kelas} | aksi: ${aksiStr} | status: ${detailStr}</div>`;
-                summaryHTML += `<div class="py-1">✅ [${mk}] | [${kelas}] | ${nama} | Aksi: [${aksiStr}] | Status: ${detailStr} </div>`;
+                summaryHTML += `<div class="py-1">✅ [${mk}] ${nama} | [${kelas}] ${aksiStr} | Ket: ${detailStr} </div>`;
             }
 
             // Detail gagal
@@ -768,7 +811,7 @@ export function renderUpdateView(container) {
                 const nama = disp.nama_mata_kuliah || disp.nama_dosen || disp.nama_mahasiswa || disp.nama_evaluasi || disp.nama_komponen || '';
                 const kelas = disp.kelas || disp.nama_kelas_kuliah || '?';
                 const aksi = disp.tipe || currentMethod;
-                summaryHTML += `<div class="py-1">❌ [${mk}] | kelas: [${kelas}] | ${nama} | aksi: [${aksi}] | status: ${log.message}</div>`;
+                summaryHTML += `<div class="py-1">❌ [${mk}] ${nama} | [${kelas}] ${aksi} Ket: ${log.message}</div>`;
             });
 
             // Skipped

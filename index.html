@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="id" class="dark">
+<html lang="id">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -11,28 +11,63 @@
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body class="bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100 min-h-screen flex">
+
+  <!-- Overlay untuk mobile -->
+  <div id="sidebar-overlay" class="fixed inset-0 bg-black/50 z-30 hidden md:hidden" aria-hidden="true"></div>
+
   <!-- Sidebar -->
-  <aside id="sidebar" class="w-64 bg-white dark:bg-gray-800 shadow-xl flex flex-col p-4 space-y-6 transition-all">
-    <h1 class="text-2xl font-bold text-center text-blue-600 dark:text-blue-400">Neo Feeder</h1>
+  <aside id="sidebar" class="fixed md:static inset-y-0 left-0 z-40 w-64 bg-white dark:bg-gray-800 shadow-xl flex flex-col p-4 space-y-6 transition-transform duration-300 -translate-x-full md:translate-x-0 overflow-y-auto">
+    <div class="flex items-center justify-between">
+      <h1 class="text-2xl font-bold text-blue-600 dark:text-blue-400">Neo Feeder</h1>
+      <!-- Tombol toggle dark/light -->
+      <button id="theme-toggle-btn" class="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition" title="Toggle Dark/Light">
+        <span id="theme-icon-dark" class="hidden dark:inline">☀️</span>
+        <span id="theme-icon-light" class="inline dark:hidden">🌙</span>
+      </button>
+    </div>
     <nav id="sidebar-nav" class="flex flex-col space-y-2">
       <button data-view="dashboard" class="nav-btn text-left px-4 py-2 rounded-lg hover:bg-blue-100 dark:hover:bg-gray-700 transition disabled:opacity-50 disabled:cursor-not-allowed" disabled>📊 Dashboard</button>
       <button data-view="import" class="nav-btn text-left px-4 py-2 rounded-lg hover:bg-blue-100 dark:hover:bg-gray-700 transition disabled:opacity-50 disabled:cursor-not-allowed" disabled>📥 Import</button>
-      <button data-view="referensi" class="nav-btn text-left px-4 py-2 rounded-lg hover:bg-blue-100 dark:hover:bg-gray-700 transition disabled:opacity-50 disabled:cursor-not-allowed" disabled>📚 Referensi</button>
       <button data-view="update" class="nav-btn text-left px-4 py-2 rounded-lg hover:bg-blue-100 dark:hover:bg-gray-700 transition disabled:opacity-50 disabled:cursor-not-allowed" disabled>✏️ Update</button>
       <button data-view="delete" class="nav-btn text-left px-4 py-2 rounded-lg hover:bg-blue-100 dark:hover:bg-gray-700 transition disabled:opacity-50 disabled:cursor-not-allowed" disabled>🗑️ Delete</button>
+      <button data-view="referensi" class="nav-btn text-left px-4 py-2 rounded-lg hover:bg-blue-100 dark:hover:bg-gray-700 transition disabled:opacity-50 disabled:cursor-not-allowed" disabled>📚 Referensi</button>
+      <button data-view="config" class="nav-btn text-left px-4 py-2 rounded-lg hover:bg-blue-100 dark:hover:bg-gray-700 transition disabled:opacity-50 disabled:cursor-not-allowed" disabled>⚙️ Konfigurasi</button>
     </nav>
     <div class="mt-auto">
-      <div id="user-info" class="text-sm text-center p-2 bg-gray-200 dark:bg-gray-700 rounded-lg">🔒 Belum login</div>
-      <button id="logout-btn" class="w-full mt-2 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition hidden">Logout</button>
+      <div id="user-info" class="text-sm text-center p-2 text-white dark:bg-gray-700 rounded-lg">🔒 Belum login</div>
+      <button id="logout-btn" class="w-full text-sm mt-2 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition hidden">Logout</button>
     </div>
   </aside>
 
+   <!-- Tombol hamburger untuk mobile -->
+    <button id="menu-toggle-btn" class="md:hidden fixed top-4 left-4 z-50 p-2 rounded-lg bg-white dark:bg-gray-800 shadow-lg" aria-label="Menu">
+      <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+      </svg>
+    </button>
+
   <!-- Main Content -->
-  <main class="flex-1 p-6 overflow-auto" id="main-content">
-    <!-- Tampilan awal sebelum login: pesan atau langsung form login -->
-    <section id="view-login" class="max-w-md mx-auto mt-20 glass p-8 rounded-2xl shadow-2xl">
+  <main class="flex-1 p-4 md:p-6 overflow-auto" id="main-content">
+    <!-- Tampilan awal sebelum login -->
+    <section id="view-login" class="max-w-md mx-auto mt-10 md:mt-20 glass p-6 md:p-8 rounded-2xl shadow-2xl">
       <h2 class="text-2xl font-bold mb-6 text-center">Login Neo Feeder</h2>
       <div class="space-y-4">
+        <!-- Input URL API -->
+        <div>
+          <label class="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">URL API Feeder</label>
+          <input id="api-url" type="text" placeholder="http://localhost:3003" value="http://localhost:3003"
+                class="w-full p-3 rounded-xl bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-800 dark:text-gray-100">
+        </div>
+
+        <!-- Input Type API -->
+        <div>
+          <select id="api-type" class="w-full p-3 rounded-xl bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-800 dark:text-gray-100">
+            <option value="sandbox2.php">sandbox2.php (Sandbox)</option>
+            <option value="live2.php">live2.php (Live)</option>
+          </select>
+        </div>
+        
+        <label class="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">Login User</label>
         <input id="username" type="text" placeholder="Username" class="w-full p-3 rounded-xl bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600">
         <input id="password" type="password" placeholder="Password" class="w-full p-3 rounded-xl bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600">
         <button id="get-token-btn" class="w-full py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition flex items-center justify-center gap-2">
@@ -48,7 +83,7 @@
   <div id="toast-container" class="fixed top-5 right-5 z-50 space-y-2"></div>
   <!-- Modal container -->
   <div id="modal-container" class="fixed inset-0 bg-black/50 flex items-center justify-center z-40 hidden"></div>
-  
+
   <script type="module" src="js/app.js"></script>
 </body>
 </html>

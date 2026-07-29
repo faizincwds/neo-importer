@@ -1,8 +1,12 @@
 // export const API_BASE = 'http://localhost:3003/ws/live2.php';
-export const API_BASE = 'http://localhost:3003/ws/sandbox2.php';
+// export const API_BASE = 'http://localhost:3003/ws/sandbox2.php';
+export const API_BASE = localStorage.getItem('nf_api_url') || 'http://localhost:3003';
+export const API_TYPE = localStorage.getItem('nf_api_type') || 'live2.php';
 export const STORAGE_KEYS = {
   TOKEN: 'nf_token',
   USER: 'nf_user',
+  API_URL: 'nf_api_url',
+  API_TYPE: 'nf_api_type',
   SETTINGS: 'nf_settings',
   LOGS: 'nf_logs',
   DICTIONARY: 'nf_dictionary',

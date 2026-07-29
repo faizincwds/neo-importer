@@ -8,40 +8,315 @@ import { sanitizeText, showToast } from './utils.js';
 
 const METHOD_GROUPS = {
   'Kelas Kuliah (KRS)': [
-    { value: 'InsertKelasKuliah', label: '[Buat] Kelas Perkuliahan' },
-    { value: 'InsertDosenPengajarKelasKuliah', label: '[Tambah] Dosen Kelas' },
-    { value: 'InsertPesertaKelasKuliah', label: '[Tambah] Peserta Kelas' },
-    { value: 'InsertKomponenEvaluasiKelas', label: '[Tambah] Komponen Kelas' },
+    { value: 'InsertKelasKuliah', label: '[Add] Kelas Perkuliahan' },
+    { value: 'InsertDosenPengajarKelasKuliah', label: '[Add] Dosen Pengajar Kelas' },
+    { value: 'InsertPesertaKelasKuliah', label: '[Add] Peserta Kelas' },
+    { value: 'InsertKomponenEvaluasiKelas', label: '[Add] Komponen Evaluasi Kelas' },
   ],
-  'Nilai & Perkuliahan (KHS)': [
-    { value: 'UpdateNilaiLengkap', label: '[Input] Nilai Perkuliahan & Komponen' },
+  'Nilai Perkuliahan Kelas (KHS)': [
+    { value: 'UpdateNilaiLengkap', label: '[Add] Nilai & Komponen Perkuliahan Kelas' },
   ],
-  'Opsi Lainnya': [
-    // { value: 'UpdateKomponenEvaluasiKelas', label: '[Edit] Komponen Kelas' },
+  //proses
+  'Data Mahasiswa': [
+    { value: 'InsertBiodataMahasiswa', label: '[Add] Biodata Mahasiswa' },
+    { value: 'InsertRiwayatPendidikanMahasiswa', label: '[Add] Riwayat Pendidikan Mahasiswa' },
+    { value: 'UpdateRiwayatPendidikanMahasiswa', label: '[Update] Riwayat Pendidikan Mahasiswa' },
+    { value: 'InsertPerubahanRiwayatPendidikan', label: '[Add] Perubahan Riwayat Pendidikan' },
+    { value: 'UpdatePerubahanRiwayatPendidikan', label: '[Update] Perubahan Riwayat Pendidikan' },
+  ],
 
-  ]
+  // BELUM dalam perkembangan
+  // 'Nilai Transfer': [
+  //   { value: 'InsertNilaiTransferPendidikanMahasiswa', label: '[Add] Nilai Transfer Mahasiswa' },
+  //   { value: 'UpdateNilaiTransferPendidikanMahasiswa', label: '[Update] Nilai Transfer Mahasiswa' },
+  // ],
+  // 'Akademik Mahasiswa': [
+  //   { value: 'InsertTranskripMahasiswa', label: '[Add] Transkrip Mahasiswa' },
+  //   { value: 'InsertMahasiswaLulusDO', label: '[Add] Mahasiswa Lulus/DO' },
+  //   { value: 'UpdateMahasiswaLulusDO', label: '[Update] Mahasiswa Lulus/DO' },
+  // ],
+  // 'Dosen': [
+  //   { value: 'InsertDosenPembimbing', label: '[Add] Dosen Pembimbing' },
+  //   { value: 'DeleteDosenPembimbing', label: '[Delete] Dosen Pembimbing' },
+  // ],
+  // 'Mata Kuliah': [
+  //   { value: 'InsertMataKuliah', label: '[Add] Mata Kuliah' },
+  //   { value: 'UpdateMataKuliah', label: '[Update] Mata Kuliah' },
+  //   { value: 'DeleteMataKuliah', label: '[Delete] Mata Kuliah' },
+  // ],
+  // 'Rencana Pembelajaran': [
+  //   { value: 'InsertRencanaPembelajaran', label: '[Add] Rencana Pembelajaran' },
+  //   { value: 'UpdateRencanaPembelajaran', label: '[Update] Rencana Pembelajaran' },
+  //   { value: 'InsertRencanaEvaluasi', label: '[Add] Rencana Pembelajaran' },
+  //   { value: 'UpdateRencanaEvaluasi', label: '[Update] Rencana Evaluasi' },
+  // ],
+  // 'Kurikulum': [
+  //   { value: 'InsertKurikulum', label: '[Add] Kurikulum' },
+  //   { value: 'UpdateKurikulum', label: '[Update] Kurikulum' },
+  //   { value: 'DeleteKurikulum', label: '[Delete] Kurikulum' },
+  //   { value: 'InsertMatkulKurikulum', label: '[Add] Mata Kuliah Kurikulum' },
+  //   { value: 'DeleteMatkulKurikulum', label: '[Delete] Mata Kuliah Kurikulum' },
+  // ],
+  // 'Aktivitas Mahasiswa (Penelitian/Skripsi)': [
+  //   { value: 'InsertAktivitasMahasiswa', label: '[Add] Aktivitas Mahasiswa' },
+  //   { value: 'UpdateAktivitasMahasiswa', label: '[Update] Aktivitas Mahasiswa' },
+  //   { value: 'DeleteAktivitasMahasiswa', label: '[Delete] Aktivitas Mahasiswa' },
+  //   { value: 'InsertAnggotaAktivitasMahasiswa', label: '[Add] Anggota Aktivitas Mahasiswa' },
+  //   { value: 'DeleteAnggotaAktivitasMahasiswa', label: '[Delete] Anggota Aktivitas Mahasiswa' },
+  //   { value: 'InsertBimbingMahasiswa', label: '[Add] Pembimbing Mahasiswa' },
+  //   { value: 'UpdateBimbingMahasiswa', label: '[Update] Pembimbing Mahasiswa' },
+  //   { value: 'DeleteBimbingMahasiswa', label: '[Delete] Pembimbing Mahasiswa' },
+  //   { value: 'InsertUjiMahasiswa', label: '[Add] Penguji Mahasiswa' },
+  //   { value: 'UpdateUjiMahasiswa', label: '[Update] Penguji Mahasiswa' },
+  //   { value: 'DeleteUjiMahasiswa', label: '[Delete] Penguji Mahasiswa' },
+  // ],
+  // 'Prestasi Mahasiswa': [
+  //   { value: 'InsertPrestasiMahasiswa', label: '[Add] Prestasi Mahasiswa' },
+  //   { value: 'UpdatePrestasiMahasiswa', label: '[Update] Prestasi Mahasiswa' },
+  //   { value: 'DeletePrestasiMahasiswa', label: '[Delete] Prestasi Mahasiswa' },
+  // ],
+
+  // 'Opsi Lainnya': [
+  //   { value: 'UpdateKomponenEvaluasiKelas', label: '[Add] Kelas' },
+  //   { value: 'UpdateKomponenEvaluasiKelas', label: '[Update] Kelas' },
+  //   { value: 'UpdateKomponenEvaluasiKelas', label: '[Delete] Kelas' },
+  // ],
 };
 
-
+const TEMPLATE_FILES = {
+  InsertKelasKuliah               : '1_insert_kelas.xlsx',
+  InsertDosenPengajarKelasKuliah  : '2_insert_dosen_ajar_kelas.xlsx',
+  InsertPesertaKelasKuliah        : '3_insert_peserta_kelas_kuliah.xlsx',
+  InsertKomponenEvaluasiKelas     : '4_insert_komponen_evaluasi_kelas.xlsx',
+  UpdateNilaiLengkap              : '5_insert_input_nilai_perkuliahan_kelas.xlsx',
+};
 
 const METHOD_CONFIG = {
+
+  InsertBiodataMahasiswa: {
+    targetFields: [
+      'nama', 'tempat_lahir', 'tanggal_lahir', 'jenis_kelamin',
+      'nik', 'agama_nama', 'agama',
+      'nisn', 'npwp',
+      'kewarganegaraan',
+      'jalan', 'rt', 'rw', 'dusun', 'kelurahan', 'kecamatan_nama', 'kode_pos',
+      'jenis_tinggal_nama', 'jenis_tinggal',
+      'alat_transportasi_nama', 'alat_transportasi',
+      'telepon', 'handphone', 'email',
+      'penerima_kps', 'nomor_kps',
+      'nik_ayah', 'nama_ayah', 'tanggal_lahir_ayah',
+      'pendidikan_ayah_nama', 'pendidikan_ayah',
+      'pekerjaan_ayah_nama', 'pekerjaan_ayah',
+      'penghasilan_ayah_nama', 'penghasilan_ayah',
+      'nik_ibu', 'nama_ibu', 'tanggal_lahir_ibu',
+      'pendidikan_ibu_nama', 'pendidikan_ibu',
+      'pekerjaan_ibu_nama', 'pekerjaan_ibu',
+      'penghasilan_ibu_nama', 'penghasilan_ibu',
+      'nama_wali', 'tanggal_lahir_wali',
+      'pendidikan_wali_nama', 'pendidikan_wali',
+      'pekerjaan_wali_nama', 'pekerjaan_wali',
+      'penghasilan_wali_nama', 'penghasilan_wali',
+      'id_kebutuhan_khusus_mahasiswa_nama', 'id_kebutuhan_khusus_mahasiswa',
+      'id_kebutuhan_khusus_ayah_nama', 'id_kebutuhan_khusus_ayah',
+      'id_kebutuhan_khusus_ibu_nama', 'id_kebutuhan_khusus_ibu',
+    ],
+    requiredFields: [
+      'nama', 'tempat_lahir', 'tanggal_lahir', 'jenis_kelamin',
+      'nik', 'agama', 'kewarganegaraan',
+      'kelurahan',
+      'penerima_kps',
+      'nama_ibu',
+      'id_kebutuhan_khusus_mahasiswa', 'id_kebutuhan_khusus_ayah', 'id_kebutuhan_khusus_ibu'
+    ],
+    transformFn: function(row) {
+      //  Buang field _nama dan _display
+      const cleanRow = {};
+      for (const key of Object.keys(row)) {
+        if (!key.endsWith('_nama') && key !== '_display') {
+          cleanRow[key] = row[key];
+        }
+      }
+      // Lanjutkan transformasi menggunakan cleanRow...
+      const r = cleanRow;
+      return {
+        nama_mahasiswa: sanitizeText(r.nama || ''),
+        jenis_kelamin: String(r.jenis_kelamin || '').charAt(0).toUpperCase(),
+        tempat_lahir: sanitizeText(r.tempat_lahir || ''),
+        tanggal_lahir: r.tanggal_lahir ? String(r.tanggal_lahir).trim() : '',
+        id_agama: parseInt(r.agama) || 1,
+        nik: String(r.nik || '').trim(),
+        nisn: String(r.nisn || '').trim(),
+        npwp: String(r.npwp || '').trim(),
+        kewarganegaraan: String(r.kewarganegaraan || 'ID').trim(),
+        jalan: sanitizeText(r.jalan || ''),
+        dusun: sanitizeText(r.dusun || ''),
+        rt: parseInt(r.rt) || 0,
+        rw: parseInt(r.rw) || 0,
+        kelurahan: sanitizeText(r.kelurahan || ''),
+        kode_pos: String(r.kode_pos || '').trim(),
+        id_wilayah: r.__id_wilayah || '',
+        id_jenis_tinggal: parseInt(r.jenis_tinggal) || 1,
+        id_alat_transportasi: parseInt(r.alat_transportasi) || 1,
+        telepon: String(r.telepon || '').trim(),
+        handphone: String(r.handphone || '').trim(),
+        email: String(r.email || '').trim(),
+        penerima_kps: r.penerima_kps === '1' ? 1 : 0,
+        nomor_kps: String(r.nomor_kps || '').trim(),
+        nik_ayah: String(r.nik_ayah || '').trim(),
+        nama_ayah: sanitizeText(r.nama_ayah || ''),
+        tanggal_lahir_ayah: r.tanggal_lahir_ayah ? String(r.tanggal_lahir_ayah).trim() : '',
+        id_pendidikan_ayah: parseInt(r.pendidikan_ayah) || 0,
+        id_pekerjaan_ayah: parseInt(r.pekerjaan_ayah) || 0,
+        id_penghasilan_ayah: parseInt(r.penghasilan_ayah) || 0,
+        nik_ibu: String(r.nik_ibu || '').trim(),
+        nama_ibu_kandung: sanitizeText(r.nama_ibu || ''),
+        tanggal_lahir_ibu: r.tanggal_lahir_ibu ? String(r.tanggal_lahir_ibu).trim() : '',
+        id_pendidikan_ibu: parseInt(r.pendidikan_ibu) || 0,
+        id_pekerjaan_ibu: parseInt(r.pekerjaan_ibu) || 0,
+        id_penghasilan_ibu: parseInt(r.penghasilan_ibu) || 0,
+        nama_wali: sanitizeText(r.nama_wali || ''),
+        tanggal_lahir_wali: r.tanggal_lahir_wali ? String(r.tanggal_lahir_wali).trim() : '',
+        id_pendidikan_wali: parseInt(r.pendidikan_wali) || 0,
+        id_pekerjaan_wali: parseInt(r.pekerjaan_wali) || 0,
+        id_penghasilan_wali: parseInt(r.penghasilan_wali) || 0,
+        id_kebutuhan_khusus_mahasiswa: parseInt(r.id_kebutuhan_khusus_mahasiswa) || 0,
+        id_kebutuhan_khusus_ayah: parseInt(r.id_kebutuhan_khusus_ayah) || 0,
+        id_kebutuhan_khusus_ibu: parseInt(r.id_kebutuhan_khusus_ibu) || 0,
+        _display: {
+          nama: r.nama,
+          nim: r.nim || '(belum ada)',
+          prodi: r.kode_prodi || ''
+        }
+      };
+    },
+    performLookup: async function(row, lookupEngine) {
+      row.__errors = {};
+
+      const refLookups = [
+        ['agama_nama', 'agama', 'GetAgama', 'nama_agama', 'id_agama'],
+        ['jenis_tinggal_nama', 'jenis_tinggal', 'GetJenisTinggal', 'nama_jenis_tinggal', 'id_jenis_tinggal'],
+        ['alat_transportasi_nama', 'alat_transportasi', 'GetAlatTransportasi', 'nama_alat_transportasi', 'id_alat_transportasi'],
+        ['kecamatan_nama', 'id_wilayah', 'GetWilayah', 'nama_wilayah', 'id_wilayah'],
+        ['pendidikan_ayah_nama', 'pendidikan_ayah', 'GetJenjangPendidikan', 'nama_jenjang_pendidikan', 'id_jenjang_pendidikan'],
+        ['pendidikan_ibu_nama', 'pendidikan_ibu', 'GetJenjangPendidikan', 'nama_jenjang_pendidikan', 'id_jenjang_pendidikan'],
+        ['pendidikan_wali_nama', 'pendidikan_wali', 'GetJenjangPendidikan', 'nama_jenjang_pendidikan', 'id_jenjang_pendidikan'],
+        ['pekerjaan_ayah_nama', 'pekerjaan_ayah', 'GetPekerjaan', 'nama_pekerjaan', 'id_pekerjaan'],
+        ['pekerjaan_ibu_nama', 'pekerjaan_ibu', 'GetPekerjaan', 'nama_pekerjaan', 'id_pekerjaan'],
+        ['pekerjaan_wali_nama', 'pekerjaan_wali', 'GetPekerjaan', 'nama_pekerjaan', 'id_pekerjaan'],
+        ['penghasilan_ayah_nama', 'penghasilan_ayah', 'GetPenghasilan', 'nama_penghasilan', 'id_penghasilan'],
+        ['penghasilan_ibu_nama', 'penghasilan_ibu', 'GetPenghasilan', 'nama_penghasilan', 'id_penghasilan'],
+        ['penghasilan_wali_nama', 'penghasilan_wali', 'GetPenghasilan', 'nama_penghasilan', 'id_penghasilan'],
+        ['id_kebutuhan_khusus_mahasiswa_nama', 'id_kebutuhan_khusus_mahasiswa', 'GetKebutuhanKhusus', 'nama_kebutuhan_khusus', 'id_kebutuhan_khusus'],
+        ['id_kebutuhan_khusus_ayah_nama', 'id_kebutuhan_khusus_ayah', 'GetKebutuhanKhusus', 'nama_kebutuhan_khusus', 'id_kebutuhan_khusus'],
+        ['id_kebutuhan_khusus_ibu_nama', 'id_kebutuhan_khusus_ibu', 'GetKebutuhanKhusus', 'nama_kebutuhan_khusus', 'id_kebutuhan_khusus'],
+      ];
+
+      for (const args of refLookups) {
+        await lookupEngine.lookupReferensi(...args, row);
+      }
+
+      const errs = Object.values(row.__errors).filter(m => m);
+      row.status = errs.length > 0 ? errs.join('; ') : 'OK';
+    }
+  },
+
+  InsertRiwayatPendidikanMahasiswa: {
+    targetFields: [
+      'nim', 'nama',
+      'id_jenis_daftar', 'id_jalur_daftar',
+      'id_periode_masuk', 'tanggal_daftar',
+      'kode_prodi', 'nama_prodi',
+      'id_bidang_minat',
+      'sks_diakui',
+      'id_pembiayaan', 'biaya_masuk',
+    ],
+    requiredFields: [
+      'nim', 'id_jenis_daftar', 'id_periode_masuk', 'tanggal_daftar',
+      'kode_prodi', 'id_pembiayaan', 'biaya_masuk'
+    ],
+    transformFn: function(row) {
+      return {
+        id_mahasiswa: row.__id_mahasiswa || '',
+        nim: String(row.nim || '').trim(),
+        id_jenis_daftar: parseInt(row.id_jenis_daftar) || 1,
+        id_jalur_daftar: parseInt(row.id_jalur_daftar) || 1,
+        id_periode_masuk: row.__id_semester || '',
+        tanggal_daftar: row.tanggal_daftar ? String(row.tanggal_daftar).trim() : '',
+        id_perguruan_tinggi: row.__id_perguruan_tinggi || '',
+        id_prodi: row.__id_prodi || '',
+        id_bidang_minat: null,
+        sks_diakui: parseInt(row.sks_diakui) || 0,
+        id_perguruan_tinggi_asal: null,
+        id_prodi_asal: null,
+        id_pembiayaan: parseInt(row.id_pembiayaan) || 1,
+        biaya_masuk: parseFloat(row.biaya_masuk) || 0,
+        _display: {
+          nim: row.nim,
+          nama: row.nama_mahasiswa || row.nama
+        }
+      };
+    },
+    performLookup: async function(row, lookupEngine) {
+      row.__errors = {};
+
+      // Lookup mahasiswa by NIM → id_mahasiswa
+      if (row.nim) {
+        const mhs = await lookupEngine.lookupMahasiswaByNim(String(row.nim).trim());
+        if (mhs) {
+          row.__id_mahasiswa = mhs.id_mahasiswa;
+          row.nama_mahasiswa = mhs.nama_mahasiswa || row.nama;
+        } else {
+          row.__errors.nim = 'Mahasiswa dengan NIM tersebut tidak ditemukan';
+        }
+      } else {
+        row.__errors.nim = 'NIM harus diisi';
+      }
+
+      // Lookup prodi
+      if (row.kode_prodi) {
+        const prodi = await lookupEngine.lookupProdi(String(row.kode_prodi).trim());
+        if (prodi) {
+          row.__id_prodi = prodi.id_prodi;
+          row.nama_prodi = prodi.nama_prodi || row.nama_prodi;
+        } else {
+          row.__errors.kode_prodi = 'Prodi tidak ditemukan';
+        }
+      }
+
+      // Lookup semester
+      if (row.id_periode_masuk) {
+        const sem = await lookupEngine.lookupSemester(String(row.id_periode_masuk).trim());
+        row.__id_semester = sem?.id_semester || row.id_periode_masuk;
+      }
+
+      // ID PT dari profil
+      try {
+        const profil = await lookupEngine.api.getProfilPT();
+        if (profil && profil.id_perguruan_tinggi) {
+          row.__id_perguruan_tinggi = profil.id_perguruan_tinggi;
+        }
+      } catch (e) {}
+
+      const errs = Object.values(row.__errors).filter(m => m);
+      row.status = errs.length > 0 ? errs.join('; ') : 'OK';
+    }
+  },
 
   InsertKelasKuliah: {
     targetFields: [
       'periode',
       'kode_mata_kuliah', 'nama_mata_kuliah',
       'kode_prodi', 'nama_prodi',
-      'kelas', 'bahasan',
+      'nama_kelas', 'bahasan',
       'tanggal_mulai_efektif', 'tanggal_akhir_efektif',
       'lingkup', 'mode_kuliah',
     ],
-    requiredFields: ['kode_mata_kuliah', 'kode_prodi', 'periode', 'kelas', 'tanggal_mulai_efektif','tanggal_akhir_efektif','lingkup','mode_kuliah'],
+    requiredFields: ['kode_mata_kuliah', 'kode_prodi', 'periode', 'nama_kelas', 'tanggal_mulai_efektif','tanggal_akhir_efektif','lingkup','mode_kuliah'],
     transformFn: function(row) {
       const id_prodi = row.__id_prodi || '';
       const id_semester = String(row.__id_semester || row.periode).trim();
       const id_matkul = row.__id_matkul || '';
 
-      const nama_kelas = sanitizeText(row.kelas || '');
       const bahasan = sanitizeText(row.bahasan || '');
       let tgl_mulai = row.tanggal_mulai_efektif ? String(row.tanggal_mulai_efektif).trim() : '';
       let tgl_akhir = row.tanggal_akhir_efektif ? String(row.tanggal_akhir_efektif).trim() : '';
@@ -55,21 +330,33 @@ const METHOD_CONFIG = {
 
       return {
         id_prodi, id_semester, id_matkul,
-        nama_kelas_kuliah: nama_kelas, bahasan,
+        nama_kelas_kuliah: row.nama_kelas, 
+        bahasan,
         tanggal_mulai_efektif: tgl_mulai || null,
         tanggal_akhir_efektif: tgl_akhir || null,
-        apa_untuk_pditt: 0, kapasitas: 0,
-        lingkup, mode,
+        lingkup, 
+        mode,
         _display: {
           kode_mata_kuliah: row.kode_mata_kuliah,
           nama_mata_kuliah: row.nama_mata_kuliah,
-          kelas: nama_kelas,
+          kelas: row.nama_kelas,
           bahasan: bahasan
         }
       };
     },
     performLookup: async function(row, lookupEngine) {
       row.__errors = {};
+
+      // 1. Semester
+      if (row.periode) {
+        const kodePeriode = String(row.periode).trim();
+        if (kodePeriode) {
+          const sem = await lookupEngine.lookupSemester(kodePeriode);
+          row.__id_semester = sem ? sem.id_semester : kodePeriode;
+        }
+      }
+
+      // 2. Mata Kuliah
       if (row.kode_mata_kuliah) {
         const kodeMk = String(row.kode_mata_kuliah).trim();
         if (kodeMk) {
@@ -97,6 +384,7 @@ const METHOD_CONFIG = {
         }
       }
 
+      // 3. Prodi
       if (row.kode_prodi || row.nama_prodi) {
         try {
           let prodi = null;
@@ -115,16 +403,9 @@ const METHOD_CONFIG = {
         } catch (err) { console.warn('Lookup prodi gagal:', err); }
       }
 
-      if (row.periode) {
-        const kodePeriode = String(row.periode).trim();
-        if (kodePeriode) {
-          const sem = await lookupEngine.lookupSemester(kodePeriode);
-          row.__id_semester = sem ? sem.id_semester : kodePeriode;
-        }
-      }
-
       if (!row.__id_matkul || row.__id_matkul.length < 10) row.__errors.kode_mata_kuliah = 'UUID mata kuliah tidak valid';
       if (!row.__id_prodi || row.__id_prodi.length < 10) row.__errors.kode_prodi = 'UUID prodi tidak valid';
+      if (!row.__id_semester) row.__errors.periode = 'ID periode tidak valid';
 
       const errs = Object.values(row.__errors).filter(m => m);
       row.status = errs.length > 0 ? errs.join('; ') : 'OK';
@@ -197,7 +478,7 @@ const METHOD_CONFIG = {
         row.__errors.periode = 'Periode harus diisi';
       }
 
-      // 3. Mata Kuliah & Prodi
+      // 3. Mata Kuliah
       const kodeMk = String(row.kode_mata_kuliah).trim();
       if (row.kode_mata_kuliah) {
         if (kodeMk) {
@@ -225,6 +506,7 @@ const METHOD_CONFIG = {
         }
       }
 
+      // 4. Prodi
       if (row.kode_prodi || row.nama_prodi) {
         try {
           let prodi = null;
@@ -243,7 +525,7 @@ const METHOD_CONFIG = {
         } catch (err) { console.warn('Lookup prodi gagal:', err); }
       }
 
-      // 3. Kelas kuliah
+      // 5. Kelas kuliah
       const namaKelas = String(row.nama_kelas || '').trim();
       const idSem = row.__id_semester;
       if (kodeMk && namaKelas && idSem) {
@@ -259,7 +541,7 @@ const METHOD_CONFIG = {
         if (!idSem) row.__errors.periode = 'Semester tidak valid';
       }
 
-      // 4. SKS dari MK
+      // 6. SKS dari MK
       if (!row.sks_ajar || parseFloat(row.sks_ajar) === 0) {
         if (kodeMk) {
           const mk = await lookupEngine.lookupMataKuliah(kodeMk);
@@ -267,7 +549,7 @@ const METHOD_CONFIG = {
         }
       }
 
-      // 5. Tatap muka realisasi default
+      // 7. Tatap muka realisasi default
       if (!row.tatap_muka_realisasi) {
         row.tatap_muka_realisasi = row.tatap_muka;
       }
@@ -860,17 +1142,21 @@ export function renderInsertView(container) {
   }
 
   container.innerHTML = `
+  
     <div id="wizard-container" class="space-y-6">
       <div id="step1" class="glass p-6 rounded-2xl">
         <h3 class="text-xl font-bold mb-4">Step 1: Pilih Method Import</h3>
-          <select id="method-select" class="w-full p-3 rounded-xl bg-white dark:bg-gray-800">
+          <select id="method-select" class="w-full p-3 rounded-xl cursor-pointer bg-white dark:bg-gray-800">
+            <option value="">--Pilih Method--</option>
             ${Object.entries(METHOD_GROUPS).map(([groupName, methods]) => `
               <optgroup label="${groupName}">
                 ${methods.map(m => `<option value="${m.value}">${m.label}</option>`).join('')}
               </optgroup>
             `).join('')}
           </select>
-        <button id="next-to-step2" class="mt-4 px-6 py-2 bg-blue-600 text-white rounded-xl">Selanjutnya</button>
+        <button id="template-btn" class="mt-2 px-6 py-2 bg-teal-600 text-white rounded-xl cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed" disabled>📝 Unduh Template Xlxs</button>
+        <button id="next-to-step2" class="mt-4 px-6 py-2 bg-blue-600 text-white rounded-xl cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed" disabled>Selanjutnya</button>
+
       </div>
       <div id="step2" class="glass p-6 rounded-2xl hidden">
         <h3 class="text-xl font-bold mb-4">Step 2: Upload Excel & Auto Mapping</h3>
@@ -886,10 +1172,10 @@ export function renderInsertView(container) {
         <button id="run-lookup" class="mt-4 px-6 py-2 bg-green-600 text-white rounded-xl hidden">Jalankan Ulang Lookup</button>
         <div id="grid-container" class="mt-6 overflow-auto"></div>
         <div class="mt-4 flex space-x-2 flex-wrap gap-y-2">
-          <button id="delete-empty-btn" class="px-4 py-2 bg-yellow-500 text-white rounded-xl">Hapus Baris Kosong</button>
-          <button id="delete-dup-btn" class="px-4 py-2 bg-yellow-500 text-white rounded-xl">Hapus Duplikat</button>
-          <button id="restore-btn" class="px-4 py-2 bg-gray-500 text-white rounded-xl">Restore</button>
-          <button id="next-to-step3" class="px-6 py-2 bg-blue-600 text-white rounded-xl ml-auto">Import Data</button>
+          <button id="delete-empty-btn" class="px-4 py-2 bg-yellow-500 text-white rounded-xl cursor-pointer">Hapus Baris Kosong</button>
+          <button id="delete-dup-btn" class="px-4 py-2 bg-yellow-500 text-white rounded-xl cursor-pointer">Hapus Duplikat</button>
+          <button id="restore-btn" class="px-4 py-2 bg-gray-500 text-white rounded-xl cursor-pointer">Restore</button>
+          <button id="next-to-step3" class="px-6 py-2 bg-blue-600 text-white rounded-xl cursor-pointer ml-auto">Import Data</button>
         </div>
       </div>
       <div id="step3" class="glass p-6 rounded-2xl hidden">
@@ -905,15 +1191,48 @@ export function renderInsertView(container) {
         </div>
         <div id="import-log" class="mt-4 h-48 overflow-y-auto bg-gray-100 dark:bg-gray-800 p-3 rounded-xl text-sm font-mono"></div>
         <div class="flex space-x-2 mt-4">
-          <button id="pause-btn" class="px-4 py-2 bg-yellow-500 text-white rounded-xl">Pause</button>
-          <button id="resume-btn" class="px-4 py-2 bg-green-500 text-white rounded-xl hidden">Resume</button>
-          <button id="cancel-btn" class="px-4 py-2 bg-red-500 text-white rounded-xl">Cancel</button>
+          <button id="pause-btn" class="px-4 py-2 bg-yellow-500 text-white rounded-xl cursor-pointer">Pause</button>
+          <button id="resume-btn" class="px-4 py-2 bg-green-500 text-white rounded-xl cursor-pointer hidden">Resume</button>
+          <button id="cancel-btn" class="px-4 py-2 bg-red-500 text-white rounded-xl cursor-pointer">Cancel</button>
         </div>
       </div>
-    </div>
+    </div>    
   `;
 
-  document.getElementById('next-to-step2').addEventListener('click', () => {
+  const methodSelect = document.getElementById('method-select');
+  const templateBtn = document.getElementById('template-btn');
+  const nextBtn = document.getElementById('next-to-step2');
+
+  // Aktifkan tombol unduh hanya setelah metode dipilih
+  methodSelect.addEventListener('change', () => {
+    const selected = methodSelect.value;
+    templateBtn.disabled = !selected;
+    nextBtn.disabled = !selected;      // ← tambahkan
+  });
+
+  // Inisialisasi awal: disable semua jika tidak ada pilihan (fallback)
+  nextBtn.disabled = !methodSelect.value;
+  templateBtn.disabled = !methodSelect.value;
+
+  templateBtn.addEventListener('click', () => {
+    const selectedMethod = methodSelect.value;
+    if (!selectedMethod) return showToast('Pilih metode terlebih dahulu', 'warning');
+
+    // Nama file sesuai method
+    const templateFileName = TEMPLATE_FILES[selectedMethod] || '';
+    const filePath = `template/insert/${templateFileName}`;
+
+    // Buat link unduh sementara
+    const link = document.createElement('a');
+    link.href = filePath;
+    link.download = templateFileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  });
+
+
+  nextBtn.addEventListener('click', () => {
     currentMethod = document.getElementById('method-select').value;
     document.getElementById('step1').classList.add('hidden');
     document.getElementById('step2').classList.remove('hidden');
@@ -1131,21 +1450,21 @@ export function renderInsertView(container) {
           
           let mk = disp.kode_mata_kuliah || row.kode_mata_kuliah || row.id_matkul || '?';
           let nama = disp.nama_mata_kuliah || row.nama_mata_kuliah || row.nama_mahasiswa || row.nama_dosen || disp.nama_dosen || disp.nama_mahasiswa || disp.nama_evaluasi || disp.nama_komponen || '';
-          let kelas = disp.kelas || row.kelas || row.nama_kelas_kuliah || '?';
+          let kelas = disp.kelas || disp.nama_kelas || row.kelas || row.nama_kelas_kuliah || '?';
           let aksi = disp.aksi || row.tipe || currentMethod;
           let status = log.message;
 
           const nim = disp.nim || '';
           const extra = nim ? ` (NIM: ${nim})` : '';
           
-          let info = `[${mk}] | kelas: [${kelas}] | ${nama} | aksi: [${aksi}] | status: ${status}`;
-          if (info.length > 100) info = info.substring(0, 97) + '...';
+          let info = `[${mk}] ${nama} | [${kelas}] ${aksi} | Ket: ${status}`;
+          if (info.length > 155) info = info.substring(0, 150) + '...';
           
           let detail = '';
           if (log.type === 'failed') {
-            detail = `<br><small class="text-gray-400">Payload: ${JSON.stringify(row)}</small>`;
+            detail = `<br><small class="text-gray-400">Payload: ${JSON.stringify(disp)}</small>`;
           }
-           return `<div class="py-1">${icon} ${info}${detail}</div>`;
+           return `<div class="py-1">${icon} ${info} ${detail}</div>`;
         }).join('');
         logEl.scrollTop = logEl.scrollHeight;
       }
@@ -1193,8 +1512,7 @@ export function renderInsertView(container) {
                 if (otherLogs.length > 0) parts.push(`${otherLogs.length} Lainnya`);
                 const detailStr = `(${successLogs.length}) Berhasil${parts.length > 0 ? ' | ' + parts.join(' + ') : ''}`;
 
-                // summaryHTML += `<div class="py-1">✅ [${mk}] | ${kelas} | aksi: ${aksiStr} | status: ${detailStr}</div>`;
-                summaryHTML += `<div class="py-1">✅ [${mk}] | [${kelas}] | ${nama} | Aksi: [${aksiStr}] | Status: ${detailStr} </div>`;
+                summaryHTML += `<div class="py-1">✅ [${mk}] ${nama} | [${kelas}] ${aksiStr} | Ket: ${detailStr} </div>`;
             }
 
             // Detail gagal
@@ -1205,7 +1523,7 @@ export function renderInsertView(container) {
                 const nama = disp.nama_mata_kuliah || disp.nama_dosen || disp.nama_mahasiswa || disp.nama_evaluasi || disp.nama_komponen || '';
                 const kelas = disp.kelas || disp.nama_kelas_kuliah || '?';
                 const aksi = disp.tipe || currentMethod;
-                summaryHTML += `<div class="py-1">❌ [${mk}] | kelas: [${kelas}] | ${nama} | aksi: [${aksi}] | status: ${log.message}</div>`;
+                summaryHTML += `<div class="py-1">❌ [${mk}] ${nama} | [${kelas}] ${aksi} Ket: ${log.message}</div>`;
             });
 
             // Skipped
