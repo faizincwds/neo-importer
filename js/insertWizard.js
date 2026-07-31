@@ -97,54 +97,59 @@ const METHOD_CONFIG = {
   InsertBiodataMahasiswa: {
     targetFields: [
       'nama', 'tempat_lahir', 'tanggal_lahir', 'jenis_kelamin',
-      'nik', 'agama_nama', 'agama',
+      'nik',
+      'id_agama', 'agama_nama',
       'nisn', 'npwp',
       'kewarganegaraan',
-      'jalan', 'rt', 'rw', 'dusun', 'kelurahan', 'kecamatan_nama', 'kode_pos',
-      'jenis_tinggal_nama', 'jenis_tinggal',
-      'alat_transportasi_nama', 'alat_transportasi',
+      'jalan', 'rt', 'rw', 'dusun', 'kelurahan_nama',
+      'kecamatan_nama', 'id_kecamatan',
+      'kode_pos',
+      'id_jenis_tinggal', 'jenis_tinggal_nama',
+      'id_alat_transportasi', 'alat_transportasi_nama',
       'telepon', 'handphone', 'email',
       'penerima_kps', 'nomor_kps',
       'nik_ayah', 'nama_ayah', 'tanggal_lahir_ayah',
-      'pendidikan_ayah_nama', 'pendidikan_ayah',
-      'pekerjaan_ayah_nama', 'pekerjaan_ayah',
-      'penghasilan_ayah_nama', 'penghasilan_ayah',
+      'id_pendidikan_ayah', 'pendidikan_ayah_nama',
+      'id_pekerjaan_ayah', 'pekerjaan_ayah_nama',
+      'id_penghasilan_ayah', 'penghasilan_ayah_nama',
       'nik_ibu', 'nama_ibu', 'tanggal_lahir_ibu',
-      'pendidikan_ibu_nama', 'pendidikan_ibu',
-      'pekerjaan_ibu_nama', 'pekerjaan_ibu',
-      'penghasilan_ibu_nama', 'penghasilan_ibu',
+      'id_pendidikan_ibu', 'pendidikan_ibu_nama',
+      'id_pekerjaan_ibu', 'pekerjaan_ibu_nama',
+      'id_penghasilan_ibu', 'penghasilan_ibu_nama',
       'nama_wali', 'tanggal_lahir_wali',
-      'pendidikan_wali_nama', 'pendidikan_wali',
-      'pekerjaan_wali_nama', 'pekerjaan_wali',
-      'penghasilan_wali_nama', 'penghasilan_wali',
-      'id_kebutuhan_khusus_mahasiswa_nama', 'id_kebutuhan_khusus_mahasiswa',
-      'id_kebutuhan_khusus_ayah_nama', 'id_kebutuhan_khusus_ayah',
-      'id_kebutuhan_khusus_ibu_nama', 'id_kebutuhan_khusus_ibu',
+      'id_pendidikan_wali', 'pendidikan_wali_nama',
+      'id_pekerjaan_wali', 'pekerjaan_wali_nama',
+      'id_penghasilan_wali', 'penghasilan_wali_nama',
+      // 'id_kebutuhan_khusus_mahasiswa', 'id_kebutuhan_khusus_mahasiswa_nama',
+      // 'id_kebutuhan_khusus_ayah', 'id_kebutuhan_khusus_ayah_nama',
+      // 'id_kebutuhan_khusus_ibu', 'id_kebutuhan_khusus_ibu_nama',
     ],
     requiredFields: [
       'nama', 'tempat_lahir', 'tanggal_lahir', 'jenis_kelamin',
-      'nik', 'agama', 'kewarganegaraan',
-      'kelurahan',
+      'nik', 'id_agama', 'kewarganegaraan',
+      'kelurahan_nama',
       'penerima_kps',
       'nama_ibu',
-      'id_kebutuhan_khusus_mahasiswa', 'id_kebutuhan_khusus_ayah', 'id_kebutuhan_khusus_ibu'
     ],
     transformFn: function(row) {
-      //  Buang field _nama dan _display
-      const cleanRow = {};
+      const r = {};
+      // Daftar field nama yang harus dipertahankan
+      const keepNamaFields = ['kelurahan_nama'];
       for (const key of Object.keys(row)) {
-        if (!key.endsWith('_nama') && key !== '_display') {
-          cleanRow[key] = row[key];
+        if (keepNamaFields.includes(key)) {
+          r[key] = row[key];
+          continue;
         }
+        if (key.endsWith('_nama') || key === '_display') continue;
+        r[key] = row[key];
       }
-      // Lanjutkan transformasi menggunakan cleanRow...
-      const r = cleanRow;
+
       return {
         nama_mahasiswa: sanitizeText(r.nama || ''),
         jenis_kelamin: String(r.jenis_kelamin || '').charAt(0).toUpperCase(),
         tempat_lahir: sanitizeText(r.tempat_lahir || ''),
         tanggal_lahir: r.tanggal_lahir ? String(r.tanggal_lahir).trim() : '',
-        id_agama: parseInt(r.agama) || 1,
+        id_agama: parseInt(r.id_agama) || 1,
         nik: String(r.nik || '').trim(),
         nisn: String(r.nisn || '').trim(),
         npwp: String(r.npwp || '').trim(),
@@ -153,11 +158,11 @@ const METHOD_CONFIG = {
         dusun: sanitizeText(r.dusun || ''),
         rt: parseInt(r.rt) || 0,
         rw: parseInt(r.rw) || 0,
-        kelurahan: sanitizeText(r.kelurahan || ''),
+        kelurahan: sanitizeText(r.kelurahan_nama || ''),   // ← ambil dari kelurahan_nama
         kode_pos: String(r.kode_pos || '').trim(),
-        id_wilayah: r.__id_wilayah || '',
-        id_jenis_tinggal: parseInt(r.jenis_tinggal) || 1,
-        id_alat_transportasi: parseInt(r.alat_transportasi) || 1,
+        id_wilayah: String(r.id_kecamatan || '').trim(),    // ← bersihkan spasi
+        id_jenis_tinggal: parseInt(r.id_jenis_tinggal) || 1,
+        id_alat_transportasi: parseInt(r.id_alat_transportasi) || 1,
         telepon: String(r.telepon || '').trim(),
         handphone: String(r.handphone || '').trim(),
         email: String(r.email || '').trim(),
@@ -166,27 +171,24 @@ const METHOD_CONFIG = {
         nik_ayah: String(r.nik_ayah || '').trim(),
         nama_ayah: sanitizeText(r.nama_ayah || ''),
         tanggal_lahir_ayah: r.tanggal_lahir_ayah ? String(r.tanggal_lahir_ayah).trim() : '',
-        id_pendidikan_ayah: parseInt(r.pendidikan_ayah) || 0,
-        id_pekerjaan_ayah: parseInt(r.pekerjaan_ayah) || 0,
-        id_penghasilan_ayah: parseInt(r.penghasilan_ayah) || 0,
+        id_pendidikan_ayah: parseInt(r.id_pendidikan_ayah) || 0,
+        id_pekerjaan_ayah: parseInt(r.id_pekerjaan_ayah) || 0,
+        id_penghasilan_ayah: parseInt(r.id_penghasilan_ayah) || 0,
         nik_ibu: String(r.nik_ibu || '').trim(),
         nama_ibu_kandung: sanitizeText(r.nama_ibu || ''),
         tanggal_lahir_ibu: r.tanggal_lahir_ibu ? String(r.tanggal_lahir_ibu).trim() : '',
-        id_pendidikan_ibu: parseInt(r.pendidikan_ibu) || 0,
-        id_pekerjaan_ibu: parseInt(r.pekerjaan_ibu) || 0,
-        id_penghasilan_ibu: parseInt(r.penghasilan_ibu) || 0,
+        id_pendidikan_ibu: parseInt(r.id_pendidikan_ibu) || 0,
+        id_pekerjaan_ibu: parseInt(r.id_pekerjaan_ibu) || 0,
+        id_penghasilan_ibu: parseInt(r.id_penghasilan_ibu) || 0,
         nama_wali: sanitizeText(r.nama_wali || ''),
         tanggal_lahir_wali: r.tanggal_lahir_wali ? String(r.tanggal_lahir_wali).trim() : '',
-        id_pendidikan_wali: parseInt(r.pendidikan_wali) || 0,
-        id_pekerjaan_wali: parseInt(r.pekerjaan_wali) || 0,
-        id_penghasilan_wali: parseInt(r.penghasilan_wali) || 0,
-        id_kebutuhan_khusus_mahasiswa: parseInt(r.id_kebutuhan_khusus_mahasiswa) || 0,
-        id_kebutuhan_khusus_ayah: parseInt(r.id_kebutuhan_khusus_ayah) || 0,
-        id_kebutuhan_khusus_ibu: parseInt(r.id_kebutuhan_khusus_ibu) || 0,
+        id_pendidikan_wali: parseInt(r.id_pendidikan_wali) || 0,
+        id_pekerjaan_wali: parseInt(r.id_pekerjaan_wali) || 0,
+        id_penghasilan_wali: parseInt(r.id_penghasilan_wali) || 0,
         _display: {
           nama: r.nama,
           nim: r.nim || '(belum ada)',
-          prodi: r.kode_prodi || ''
+          prodi: r.kode_prodi || '(belum ada)'
         }
       };
     },
@@ -194,22 +196,22 @@ const METHOD_CONFIG = {
       row.__errors = {};
 
       const refLookups = [
-        ['agama_nama', 'agama', 'GetAgama', 'nama_agama', 'id_agama'],
-        ['jenis_tinggal_nama', 'jenis_tinggal', 'GetJenisTinggal', 'nama_jenis_tinggal', 'id_jenis_tinggal'],
-        ['alat_transportasi_nama', 'alat_transportasi', 'GetAlatTransportasi', 'nama_alat_transportasi', 'id_alat_transportasi'],
-        ['kecamatan_nama', 'id_wilayah', 'GetWilayah', 'nama_wilayah', 'id_wilayah'],
-        ['pendidikan_ayah_nama', 'pendidikan_ayah', 'GetJenjangPendidikan', 'nama_jenjang_pendidikan', 'id_jenjang_pendidikan'],
-        ['pendidikan_ibu_nama', 'pendidikan_ibu', 'GetJenjangPendidikan', 'nama_jenjang_pendidikan', 'id_jenjang_pendidikan'],
-        ['pendidikan_wali_nama', 'pendidikan_wali', 'GetJenjangPendidikan', 'nama_jenjang_pendidikan', 'id_jenjang_pendidikan'],
-        ['pekerjaan_ayah_nama', 'pekerjaan_ayah', 'GetPekerjaan', 'nama_pekerjaan', 'id_pekerjaan'],
-        ['pekerjaan_ibu_nama', 'pekerjaan_ibu', 'GetPekerjaan', 'nama_pekerjaan', 'id_pekerjaan'],
-        ['pekerjaan_wali_nama', 'pekerjaan_wali', 'GetPekerjaan', 'nama_pekerjaan', 'id_pekerjaan'],
-        ['penghasilan_ayah_nama', 'penghasilan_ayah', 'GetPenghasilan', 'nama_penghasilan', 'id_penghasilan'],
-        ['penghasilan_ibu_nama', 'penghasilan_ibu', 'GetPenghasilan', 'nama_penghasilan', 'id_penghasilan'],
-        ['penghasilan_wali_nama', 'penghasilan_wali', 'GetPenghasilan', 'nama_penghasilan', 'id_penghasilan'],
-        ['id_kebutuhan_khusus_mahasiswa_nama', 'id_kebutuhan_khusus_mahasiswa', 'GetKebutuhanKhusus', 'nama_kebutuhan_khusus', 'id_kebutuhan_khusus'],
-        ['id_kebutuhan_khusus_ayah_nama', 'id_kebutuhan_khusus_ayah', 'GetKebutuhanKhusus', 'nama_kebutuhan_khusus', 'id_kebutuhan_khusus'],
-        ['id_kebutuhan_khusus_ibu_nama', 'id_kebutuhan_khusus_ibu', 'GetKebutuhanKhusus', 'nama_kebutuhan_khusus', 'id_kebutuhan_khusus'],
+        ['agama_nama', 'id_agama', 'GetAgama', 'nama_agama', 'id_agama'],
+        ['jenis_tinggal_nama', 'id_jenis_tinggal', 'GetJenisTinggal', 'nama_jenis_tinggal', 'id_jenis_tinggal'],
+        ['alat_transportasi_nama', 'id_alat_transportasi', 'GetAlatTransportasi', 'nama_alat_transportasi', 'id_alat_transportasi'],
+        ['kecamatan_nama', 'id_kecamatan', 'GetWilayah', 'nama_wilayah', 'id_wilayah'],
+        ['pendidikan_ayah_nama', 'id_pendidikan_ayah', 'GetJenjangPendidikan', 'nama_jenjang_didik', 'id_jenjang_didik'],
+        ['pendidikan_ibu_nama', 'id_pendidikan_ibu', 'GetJenjangPendidikan', 'nama_jenjang_didik', 'id_jenjang_didik'],
+        ['pendidikan_wali_nama', 'id_pendidikan_wali', 'GetJenjangPendidikan', 'nama_jenjang_didik', 'id_jenjang_didik'],
+        ['pekerjaan_ayah_nama', 'id_pekerjaan_ayah', 'GetPekerjaan', 'nama_pekerjaan', 'id_pekerjaan'],
+        ['pekerjaan_ibu_nama', 'id_pekerjaan_ibu', 'GetPekerjaan', 'nama_pekerjaan', 'id_pekerjaan'],
+        ['pekerjaan_wali_nama', 'id_pekerjaan_wali', 'GetPekerjaan', 'nama_pekerjaan', 'id_pekerjaan'],
+        ['penghasilan_ayah_nama', 'id_penghasilan_ayah', 'GetPenghasilan', 'nama_penghasilan', 'id_penghasilan'],
+        ['penghasilan_ibu_nama', 'id_penghasilan_ibu', 'GetPenghasilan', 'nama_penghasilan', 'id_penghasilan'],
+        ['penghasilan_wali_nama', 'id_penghasilan_wali', 'GetPenghasilan', 'nama_penghasilan', 'id_penghasilan'],
+        // ['id_kebutuhan_khusus_mahasiswa_nama', 'id_kebutuhan_khusus_mahasiswa', 'GetKebutuhanKhusus', 'nama_kebutuhan_khusus', 'id_kebutuhan_khusus'],
+        // ['id_kebutuhan_khusus_ayah_nama', 'id_kebutuhan_khusus_ayah', 'GetKebutuhanKhusus', 'nama_kebutuhan_khusus', 'id_kebutuhan_khusus'],
+        // ['id_kebutuhan_khusus_ibu_nama', 'id_kebutuhan_khusus_ibu', 'GetKebutuhanKhusus', 'nama_kebutuhan_khusus', 'id_kebutuhan_khusus'],
       ];
 
       for (const args of refLookups) {
@@ -223,18 +225,16 @@ const METHOD_CONFIG = {
 
   InsertRiwayatPendidikanMahasiswa: {
     targetFields: [
-      'nim', 'nama',
-      'id_jenis_daftar', 'id_jalur_daftar',
-      'id_periode_masuk', 'tanggal_daftar',
+      'nim', 'nama', 'nik', 'email',
+      'id_jalur_daftar', 'jalur_pendaftaran_nama',
+      'id_jenis_daftar', 'jenis_pendaftaran_nama',
+      'tanggal_masuk_kuliah',
+      'id_periode_masuk',
       'kode_prodi', 'nama_prodi',
-      'id_bidang_minat',
-      'sks_diakui',
-      'id_pembiayaan', 'biaya_masuk',
+      'id_pembiayaan', 'pembiayaan_nama',
+      'biaya_masuk',
     ],
-    requiredFields: [
-      'nim', 'id_jenis_daftar', 'id_periode_masuk', 'tanggal_daftar',
-      'kode_prodi', 'id_pembiayaan', 'biaya_masuk'
-    ],
+    requiredFields: ['nama', 'nim', 'id_jenis_daftar', 'id_periode_masuk', 'tanggal_masuk_kuliah', 'kode_prodi', 'biaya_masuk'],
     transformFn: function(row) {
       return {
         id_mahasiswa: row.__id_mahasiswa || '',
@@ -242,38 +242,53 @@ const METHOD_CONFIG = {
         id_jenis_daftar: parseInt(row.id_jenis_daftar) || 1,
         id_jalur_daftar: parseInt(row.id_jalur_daftar) || 1,
         id_periode_masuk: row.__id_semester || '',
-        tanggal_daftar: row.tanggal_daftar ? String(row.tanggal_daftar).trim() : '',
+        tanggal_daftar: row.tanggal_masuk_kuliah ? String(row.tanggal_masuk_kuliah).trim() : '',
         id_perguruan_tinggi: row.__id_perguruan_tinggi || '',
         id_prodi: row.__id_prodi || '',
         id_bidang_minat: null,
-        sks_diakui: parseInt(row.sks_diakui) || 0,
+        sks_diakui: 0,
         id_perguruan_tinggi_asal: null,
         id_prodi_asal: null,
         id_pembiayaan: parseInt(row.id_pembiayaan) || 1,
         biaya_masuk: parseFloat(row.biaya_masuk) || 0,
         _display: {
           nim: row.nim,
-          nama: row.nama_mahasiswa || row.nama
+          nik: row.nik || '', 
+          email: row.email || '',
+          nama: row.nama || '(tanpa nama)'
         }
       };
     },
     performLookup: async function(row, lookupEngine) {
       row.__errors = {};
 
-      // Lookup mahasiswa by NIM → id_mahasiswa
-      if (row.nim) {
-        const mhs = await lookupEngine.lookupMahasiswaByNim(String(row.nim).trim());
-        if (mhs) {
-          row.__id_mahasiswa = mhs.id_mahasiswa;
-          row.nama_mahasiswa = mhs.nama_mahasiswa || row.nama;
-        } else {
-          row.__errors.nim = 'Mahasiswa dengan NIM tersebut tidak ditemukan';
+      // 1. Cari mahasiswa berdasarkan kriteria (NIK, NISN, email, nama)
+      const mhs = await lookupEngine.lookupMahasiswaByCriteria(row);
+      if (mhs && mhs.id_mahasiswa) {
+        row.__id_mahasiswa = mhs.id_mahasiswa;
+        row.nama = mhs.nama_mahasiswa || row.nama;
+        try {
+          const biodataRes = await lookupEngine.api.call('GetBiodataMahasiswa', {
+            filter: `id_mahasiswa = '${mhs.id_mahasiswa}'`
+          });
+          const biodataArr = lookupEngine.api.extractData(biodataRes);
+          const detail = Array.isArray(biodataArr) ? biodataArr[0] : biodataArr;
+          if (detail) {
+            if (!row.nik || String(row.nik).trim() === '') {
+              row.nik = detail.nik || '';
+            }
+            if (!row.email || String(row.email).trim() === '') {
+              row.email = detail.email || '';
+            }
+          }
+        } catch (e) {
+          console.warn('Gagal mengambil biodata detail', e);
         }
       } else {
-        row.__errors.nim = 'NIM harus diisi';
+        row.__errors.nama = 'Mahasiswa tidak ditemukan. Pastikan biodata sudah diinput.';
       }
 
-      // Lookup prodi
+      // 2. Lookup prodi: kode_prodi dulu, jika kosong gunakan nama_prodi
       if (row.kode_prodi) {
         const prodi = await lookupEngine.lookupProdi(String(row.kode_prodi).trim());
         if (prodi) {
@@ -282,21 +297,44 @@ const METHOD_CONFIG = {
         } else {
           row.__errors.kode_prodi = 'Prodi tidak ditemukan';
         }
+      } else if (row.nama_prodi) {
+        const prodi = await lookupEngine.lookupProdiByName(String(row.nama_prodi).trim());
+        if (prodi) {
+          row.__id_prodi = prodi.id_prodi;
+          row.kode_prodi = prodi.kode_prodi; // isi kode_prodi otomatis
+        } else {
+          row.__errors.nama_prodi = 'Nama prodi tidak ditemukan';
+        }
+      } else {
+        row.__errors.kode_prodi = 'Kode atau nama prodi harus diisi';
       }
 
-      // Lookup semester
-      if (row.id_periode_masuk) {
+      // 3. Lookup semester
+      if (row.id_periode_masuk) {  // field "Mulai Semester" dari Excel
         const sem = await lookupEngine.lookupSemester(String(row.id_periode_masuk).trim());
         row.__id_semester = sem?.id_semester || row.id_periode_masuk;
+      } else {
+        row.__errors.id_periode_masuk = 'Mulai semester harus diisi';
       }
 
-      // ID PT dari profil
+      // 4. ID PT dari profil
       try {
         const profil = await lookupEngine.api.getProfilPT();
         if (profil && profil.id_perguruan_tinggi) {
           row.__id_perguruan_tinggi = profil.id_perguruan_tinggi;
         }
       } catch (e) {}
+
+      // 5. Auto lookup referensi
+      const refLookups = [
+        ['jalur_pendaftaran_nama', 'id_jalur_daftar', 'GetJalurMasuk', 'nama_jalur_masuk', 'id_jalur_masuk'],
+        ['jenis_pendaftaran_nama', 'id_jenis_daftar', 'GetJenisPendaftaran', 'nama_jenis_daftar', 'id_jenis_daftar'],
+        ['pembiayaan_nama', 'id_pembiayaan', 'GetPembiayaan', 'nama_pembiayaan', 'id_pembiayaan'],
+      ];
+
+      for (const args of refLookups) {
+        await lookupEngine.lookupReferensi(...args, row);
+      }
 
       const errs = Object.values(row.__errors).filter(m => m);
       row.status = errs.length > 0 ? errs.join('; ') : 'OK';
@@ -1449,8 +1487,8 @@ export function renderInsertView(container) {
           const row = log.row || {};
           const disp = row._display || {};
           
-          let mk = disp.kode_mata_kuliah || row.kode_mata_kuliah || row.id_matkul || '?';
-          let nama = disp.nama_mata_kuliah || row.nama_mata_kuliah || row.nama_mahasiswa || row.nama_dosen || disp.nama_dosen || disp.nama_mahasiswa || disp.nama_evaluasi || disp.nama_komponen || '';
+          let mk = disp.kode_mata_kuliah || disp.nim || row.nik || row.kode_mata_kuliah || row.id_matkul || '?';
+          let nama = disp.nama || disp.nama_mata_kuliah || row.nama_mata_kuliah || row.nama_mahasiswa || row.nama_dosen || disp.nama_dosen || disp.nama_mahasiswa || disp.nama_evaluasi || disp.nama_komponen || '';
           let kelas = disp.kelas || disp.nama_kelas || row.kelas || row.nama_kelas_kuliah || '?';
           let aksi = disp.aksi || row.tipe || currentMethod;
           let status = log.message;

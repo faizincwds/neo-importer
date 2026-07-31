@@ -32,7 +32,7 @@ export class Logger {
     }
 
     // localStorage.setItem(STORAGE_KEYS.LOGS, JSON.stringify(this.logs));
-    console.log(`[${level.toUpperCase()}] ${message}`, details);
+    // console.log(`[${level.toUpperCase()}] ${message}`, details);
   }
 
   _trimIfNeeded() {

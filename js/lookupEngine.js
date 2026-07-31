@@ -324,15 +324,18 @@ export class LookupEngine {
   }
 
   // Cari id_wilayah berdasarkan nama kecamatan (jika diperlukan)
-  async lookupWilayah(namaKecamatan) {
+  async lookupWilayah(namaKecamatan, level = 3) {
     if (!namaKecamatan) return null;
-    const key = `wilayah_${namaKecamatan}`;
+    const clean = namaKecamatan.trim().toLowerCase();
+    const key = `wilayah_${level}_${clean}`;
     if (this.cache[key]) return this.cache[key];
     try {
-      const list = await this.api.getWilayah();
-      const arr = Array.isArray(list) ? list : (list?.data || []);
-      const found = arr.find(w => 
-        w.nama_wilayah.toLowerCase().includes(namaKecamatan.toLowerCase())
+      // Ambil semua data wilayah (bisa banyak, sebaiknya difilter di server jika memungkinkan)
+      const list = await this.api.call('GetWilayah');
+      const arr = Array.isArray(list?.data) ? list.data : (Array.isArray(list) ? list : []);
+      const found = arr.find(item => 
+        item.id_level_wilayah === level &&
+        (item.nama_wilayah || '').toLowerCase() === clean
       );
       if (found) {
         this.cache[key] = found;
@@ -344,19 +347,28 @@ export class LookupEngine {
     return null;
   }
 
-    // Cari data referensi berdasarkan nama (misal nama agama, pekerjaan, dll.)
+  // Cari data referensi berdasarkan nama (misal nama agama, pekerjaan, dll.)
   async lookupByNama(method, nama, labelField) {
     if (!nama) return null;
     const clean = nama.trim().toLowerCase();
     const key = `${method}_${clean}`;
     if (this.cache[key]) return this.cache[key];
+
     try {
-      const list = await this.api.call(method);   // panggil API langsung
+      const list = await this.api.call(method);
       const arr = Array.isArray(list?.data) ? list.data : (Array.isArray(list) ? list : []);
-      const found = arr.find(item => {
-        const itemName = (item[labelField] || '').toLowerCase();
-        return itemName === clean || itemName.includes(clean);
-      });
+
+      // 1. Coba cocok persis
+      let found = arr.find(item => (item[labelField] || '').toLowerCase() === clean);
+
+      // 2. Jika tidak ketemu, coba cocokkan dengan substring (misal "SD / sederajat" mengandung "SD")
+      if (!found) {
+        found = arr.find(item => {
+          const itemName = (item[labelField] || '').toLowerCase();
+          return itemName.includes(clean) || clean.includes(itemName);
+        });
+      }
+
       if (found) {
         this.cache[key] = found;
         return found;
@@ -367,12 +379,19 @@ export class LookupEngine {
     return null;
   }
 
-  // Method yang dipanggil dari performLookup
   async lookupReferensi(fieldNama, fieldId, method, labelField, idProperty, row) {
     const nama = row[fieldNama];
     const id = row[fieldId];
+
     if (!nama || String(nama).trim() === '') return;
-    if (id && String(id).trim() !== '') return;
+    if (id && String(id).trim() !== '') return; // sudah ada ID, tidak perlu lookup
+
+    // Jika nilai di kolom nama adalah angka, pindahkan ke kolom ID
+    if (/^\d+$/.test(String(nama).trim())) {
+      row[fieldId] = nama;
+      row[fieldNama] = '';
+      return;
+    }
 
     try {
       const ref = await this.lookupByNama(method, String(nama).trim(), labelField);
@@ -380,6 +399,8 @@ export class LookupEngine {
         const idValue = ref[idProperty];
         if (idValue !== undefined && idValue !== null) {
           row[fieldId] = idValue;
+          // update nama dengan nama resmi dari referensi
+          row[fieldNama] = ref[labelField] || nama;
         } else {
           if (!row.__errors) row.__errors = {};
           row.__errors[fieldNama] = `ID untuk ${nama} tidak ditemukan di struktur data`;
@@ -391,6 +412,50 @@ export class LookupEngine {
     } catch (e) {
       console.warn(`Lookup referensi ${method} gagal:`, e);
     }
+  }
+
+  async lookupMahasiswaByNama(nama) {
+    if (!nama) return null;
+    const key = `mhs_nama_${nama.trim().toLowerCase()}`;
+    if (this.cache[key]) return this.cache[key];
+    try {
+      const list = await this.api.getListMahasiswa({ nama: nama.trim() });
+      const arr = Array.isArray(list) ? list : (list?.data || []);
+      const found = arr[0];
+      if (found && found.id_mahasiswa) {
+        this.cache[key] = found;
+        return found;
+      }
+    } catch (e) {
+      console.warn('Lookup mahasiswa by nama failed', e);
+    }
+    return null;
+  }
+
+  async lookupMahasiswaByCriteria(row) {
+    // Prioritas: cari dengan NIK, lalu NISN, lalu email, terakhir nama
+    const candidates = [
+      { key: 'nik', value: row.nik },
+      { key: 'email', value: row.email },
+    ];
+
+    let found = null;
+    for (const candidate of candidates) {
+      if (candidate.value && String(candidate.value).trim() !== '') {
+        found = await this.api.cariMahasiswa({ [candidate.key]: candidate.value });
+        if (found && Array.isArray(found) && found.length > 0) return found[0];
+        if (found && !Array.isArray(found)) return found;
+      }
+    }
+
+    // Fallback: cari dengan nama
+    if (row.nama && String(row.nama).trim() !== '') {
+      found = await this.api.cariMahasiswa({ nama: row.nama.trim() });
+      if (found && Array.isArray(found) && found.length > 0) return found[0];
+      if (found && !Array.isArray(found)) return found;
+    }
+
+    return null;
   }
 
   // ======================= EVALUASI ========================

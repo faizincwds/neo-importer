@@ -63,7 +63,7 @@ export class NeoFeederAPI {
       } catch (e) {
         // ✅ Catat kesalahan format JSON
         loggerInst.log('error', `Respon bukan JSON untuk ${method}`, { respon: text.substring(0, 200) });
-        console.error(`[API] Respons bukan JSON: ${text.substring(0, 100)}`);
+        // console.error(`[API] Respons bukan JSON: ${text.substring(0, 100)}`);
         throw new Error('Respons server bukan JSON yang valid');
       }
 
@@ -312,14 +312,21 @@ export class NeoFeederAPI {
   }
 
     // Generic method untuk referensi yang hanya butuh act
-  // async getAgama() { const res = await this.call('GetAgama'); return this.extractData(res); }
-  // async getJenisTinggal() { const res = await this.call('GetJenisTinggal'); return this.extractData(res); }
-  // async getAlatTransportasi() { const res = await this.call('GetAlatTransportasi'); return this.extractData(res); }
-  // async getWilayah() { const res = await this.call('GetWilayah'); return this.extractData(res); }
-  // async getJenjangPendidikan() { const res = await this.call('GetJenjangPendidikan'); return this.extractData(res); }
-  // async getPekerjaan() { const res = await this.call('GetPekerjaan'); return this.extractData(res); }
-  // async getPenghasilan() { const res = await this.call('GetPenghasilan'); return this.extractData(res); }
-  // async getKebutuhanKhusus() { const res = await this.call('GetKebutuhanKhusus'); return this.extractData(res); }
+  async getAgama() { const res = await this.call('GetAgama'); return this.extractData(res); }
+  async getJenisTinggal() { const res = await this.call('GetJenisTinggal'); return this.extractData(res); }
+  async getAlatTransportasi() { const res = await this.call('GetAlatTransportasi'); return this.extractData(res); }
+  async GetLevelWilayah() { const res = await this.call('GetLevelWilayah'); return this.extractData(res); }
+  async getJenjangPendidikan() { const res = await this.call('GetJenjangPendidikan'); return this.extractData(res); }
+  async getPekerjaan() { const res = await this.call('GetPekerjaan'); return this.extractData(res); }
+  async getPenghasilan() { const res = await this.call('GetPenghasilan'); return this.extractData(res); }
+  async getKebutuhanKhusus() { const res = await this.call('GetKebutuhanKhusus'); return this.extractData(res); }
+  async getPembiayaan() { const res = await this.call('GetPembiayaan'); return this.extractData(res); }
+  async getWilayah(level = null) {
+    let filterStr = '';
+    if (level) filterStr = `id_level_wilayah = ${level}`;
+    const res = await this.call('GetWilayah', { filter: filterStr });
+    return this.extractData(res);
+  }
 
   // END REFERENCE
 
@@ -329,6 +336,32 @@ export class NeoFeederAPI {
     const { _display, ...cleanRecord } = record;
     return this.callSafe('InsertBiodataMahasiswa', { record: cleanRecord });
   }
+
+  async insertRiwayatPendidikanMahasiswa(record) {
+    const { _display, ...cleanRecord } = record;
+    return this.callSafe('InsertRiwayatPendidikanMahasiswa', { record: cleanRecord });
+  }
+
+  // Method khusus untuk mencari mahasiswa dengan filter yang lebih fleksibel
+  async cariMahasiswa(filter = {}) {
+    const conditions = [];
+    if (filter.nama) conditions.push(`nama_mahasiswa LIKE '%${filter.nama}%'`);
+    if (filter.nik) conditions.push(`nik = '${filter.nik}'`);
+    if (filter.email) conditions.push(`email = '${filter.email}'`);
+    const filterStr = conditions.length ? conditions.join(' AND ') : '';
+    const res = await this.call('GetListMahasiswa', { filter: filterStr, limit: 1 });
+    return this.extractData(res);
+  }
+
+  // Mencari mahasiswa berdasarkan nama (untuk mendapatkan id_mahasiswa)
+  // async getListMahasiswa(filter = {}) {
+  //   let filterStr = '';
+  //   if (filter.nama) filterStr = `nama_mahasiswa LIKE '%${filter.nama}%'`;
+  //   else if (filter.nim) filterStr = `nim = '${filter.nim}'`;
+  //   else if (filter.id_mahasiswa) filterStr = `id_mahasiswa = '${filter.id_mahasiswa}'`;
+  //   const res = await this.call('GetListMahasiswa', { filter: filterStr, limit: 1 });
+  //   return this.extractData(res);
+  // }
 
   async insertKelasKuliah(record) {
     const { _display, ...cleanRecord } = record;
