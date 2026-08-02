@@ -64,7 +64,7 @@ export class LookupEngine {
     try {
       const list = await this.api.getProdi();
       const arr = Array.isArray(list) ? list : (list?.data || list?.result || []);
-      console.log('GetProdi result:', arr);
+      // console.log('GetProdi result:', arr);
       const found = arr.find(p => {
         const kodeProdi = (p.kode_prodi || p.kode_program_studi || p.kd_prodi || '').toString().trim();
         return kodeProdi === kode.toString().trim();

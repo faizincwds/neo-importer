@@ -12,7 +12,6 @@ export class NeoFeederAPI {
   }
 
   async call(method, params = {}) {
-    // Ambil dari localStorage, fallback ke default
     const baseUrl = localStorage.getItem(STORAGE_KEYS.API_URL) || 'http://localhost:3003';
     const apiType = localStorage.getItem(STORAGE_KEYS.API_TYPE) || 'live2.php';
     const url = `${baseUrl}/ws/${apiType}`;   // <-- gunakan URL lengkap
@@ -23,16 +22,15 @@ export class NeoFeederAPI {
       ...params,
     };
 
-    // ✅ Catat permintaan ke log
     loggerInst.log('api', `Mengirim permintaan: ${method}`, { url, payload });
-    console.log(`[URL API] Request`, url);
-    console.log(`[API] Request ${method}`, payload);
+    console.log(`[URL API] Request ${method}`, url);
+    // console.log(`[API] Request ${method}`, payload);
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 30000);
 
     try {
-      const response = await fetch(url, {   // <-- bukan API_BASE
+      const response = await fetch(url, { 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -45,7 +43,7 @@ export class NeoFeederAPI {
         const errorText = await response.text();
         // ✅ Catat error HTTP
         loggerInst.log('error', `Gagal terhubung API: HTTP ${response.status}`, { status: response.status, respon: errorText });
-        console.error(`[API] HTTP ${response.status}`, errorText);
+        console.error(`[API ERROR] HTTP ${response.status}`, errorText);
         throw new Error(`HTTP ${response.status} - ${response.statusText}`);
       }
 
@@ -53,7 +51,7 @@ export class NeoFeederAPI {
       if (!text) {
         // ✅ Catat respon kosong
         loggerInst.log('warning', `Respon kosong dari server untuk ${method}`);
-        console.error(`[API] Empty response for ${method}`);
+        console.error(`[API ERROR] Empty response for ${method}`);
         throw new Error('Server mengembalikan respons kosong');
       }
 
@@ -63,7 +61,7 @@ export class NeoFeederAPI {
       } catch (e) {
         // ✅ Catat kesalahan format JSON
         loggerInst.log('error', `Respon bukan JSON untuk ${method}`, { respon: text.substring(0, 200) });
-        // console.error(`[API] Respons bukan JSON: ${text.substring(0, 100)}`);
+        console.error(`[API ERROR] Respons bukan JSON: ${text.substring(0, 100)}`);
         throw new Error('Respons server bukan JSON yang valid');
       }
 
@@ -127,7 +125,6 @@ export class NeoFeederAPI {
 
   /**
    * Mengekstrak data dari respons API.
-   * Neo Feeder biasanya mengembalikan { data: [...] } atau { result: [...] } atau langsung array.
    */
   extractData(response) {
     if (!response) return null;
@@ -332,36 +329,205 @@ export class NeoFeederAPI {
 
 
   // INSERT
-  async insertBiodataMahasiswa(record) {
-    const { _display, ...cleanRecord } = record;
-    return this.callSafe('InsertBiodataMahasiswa', { record: cleanRecord });
+
+  // Method baru: cari mahasiswa lewat GetBiodataMahasiswa dulu, lalu GetListMahasiswa
+  async cariMahasiswaLengkap({ nik, email, nama, jenis_kelamin, tanggal_lahir }) {
+    // 1. Cari di GetBiodataMahasiswa berdasarkan NIK / email
+    let biodataArr = null;
+    if (nik) {
+      const res = await this.call('GetBiodataMahasiswa', { filter: `nik = '${nik}'` });
+      biodataArr = this.extractData(res);
+    }
+    if ((!biodataArr || (Array.isArray(biodataArr) && biodataArr.length === 0)) && email) {
+      const res = await this.call('GetBiodataMahasiswa', { filter: `email = '${email}'` });
+      biodataArr = this.extractData(res);
+    }
+
+    // Jika tidak ditemukan di biodata, fallback ke cara lama (GetListMahasiswa dengan filter biasa)
+    if (!biodataArr || (Array.isArray(biodataArr) && biodataArr.length === 0)) {
+      return this.cariMahasiswa({ nama });
+    }
+
+    // Ambil data mahasiswa pertama
+    const biodata = Array.isArray(biodataArr) ? biodataArr[0] : biodataArr;
+    if (!biodata) return null;
+
+    // 2. Cari di GetListMahasiswa menggunakan nama, jenis kelamin, tanggal lahir dari biodata
+    const filterConditions = [];
+    if (biodata.nama_mahasiswa) filterConditions.push(`nama_mahasiswa LIKE '%${biodata.nama_mahasiswa}%'`);
+    if (biodata.jenis_kelamin) filterConditions.push(`jenis_kelamin = '${biodata.jenis_kelamin}'`);
+    if (biodata.tanggal_lahir) {
+      // Tanggal dari GetBiodataMahasiswa sudah dalam format DD-MM-YYYY (contoh: 10-02-2008)
+      filterConditions.push(`tanggal_lahir = '${biodata.tanggal_lahir}'`);
+    }
+    const filterStr = filterConditions.join(' AND ');
+    const res = await this.call('GetListMahasiswa', { filter: filterStr, limit: 1 });
+    const listData = this.extractData(res);
+    const found = Array.isArray(listData) ? listData[0] : listData;
+    return found || null;
   }
 
-  async insertRiwayatPendidikanMahasiswa(record) {
-    const { _display, ...cleanRecord } = record;
-    return this.callSafe('InsertRiwayatPendidikanMahasiswa', { record: cleanRecord });
+  async cekRiwayatMahasiswa(id_mahasiswa) {
+    const res = await this.call('GetListRiwayatPendidikanMahasiswa', {
+      filter: `id_mahasiswa = '${id_mahasiswa}'`,
+      limit: 1
+    });
+    const data = this.extractData(res);
+    return (Array.isArray(data) && data.length > 0) || (!Array.isArray(data) && data);
   }
 
-  // Method khusus untuk mencari mahasiswa dengan filter yang lebih fleksibel
   async cariMahasiswa(filter = {}) {
     const conditions = [];
     if (filter.nama) conditions.push(`nama_mahasiswa LIKE '%${filter.nama}%'`);
     if (filter.nik) conditions.push(`nik = '${filter.nik}'`);
     if (filter.email) conditions.push(`email = '${filter.email}'`);
+    if (filter.id_mahasiswa) conditions.push(`id_mahasiswa = '${filter.id_mahasiswa}'`);
     const filterStr = conditions.length ? conditions.join(' AND ') : '';
     const res = await this.call('GetListMahasiswa', { filter: filterStr, limit: 1 });
     return this.extractData(res);
   }
 
-  // Mencari mahasiswa berdasarkan nama (untuk mendapatkan id_mahasiswa)
-  // async getListMahasiswa(filter = {}) {
-  //   let filterStr = '';
-  //   if (filter.nama) filterStr = `nama_mahasiswa LIKE '%${filter.nama}%'`;
-  //   else if (filter.nim) filterStr = `nim = '${filter.nim}'`;
-  //   else if (filter.id_mahasiswa) filterStr = `id_mahasiswa = '${filter.id_mahasiswa}'`;
-  //   const res = await this.call('GetListMahasiswa', { filter: filterStr, limit: 1 });
-  //   return this.extractData(res);
-  // }
+  async findMahasiswaByNIK(nik) {
+    if (!nik) return null;
+    const found = await this.cariMahasiswa({ nik });
+    return (Array.isArray(found) ? found[0] : found)?.id_mahasiswa || null;
+  }
+
+  async insertMahasiswaLengkap(payload) {
+    loggerInst.log('info', 'Memulai proses insert mahasiswa lengkap...', {
+        nim: payload.riwayat?.nim,
+        nama: payload.biodata?.nama_mahasiswa
+    });
+
+    let id_mahasiswa;
+    let biodataBaru = false;
+
+    // 1. Coba insert biodata
+    try {
+      loggerInst.log('info', '🔵 Mencoba insert biodata...');
+
+      const biodataResult = await this.insertBiodataMahasiswa(payload.biodata);
+
+      // Cek tipe hasil
+      if (typeof biodataResult === 'string' && biodataResult .length === 36) {
+          id_mahasiswa = biodataResult ;
+          biodataBaru = true;
+
+      } else if (biodataResult && biodataResult.skipped) {
+          loggerInst.log('error', 'Biodata sudah ada, menggunakan id_mahasiswa yang ada');
+          id_mahasiswa = biodataResult.id_mahasiswa;
+
+      } else {
+          throw new Error('Gagal mendapatkan id_mahasiswa dari respons insert biodata');
+      }
+
+      loggerInst.log('info', '✅ Cek Biodata dengan id_mahasiswa:', id_mahasiswa);
+    } catch (err) {
+        loggerInst.log('error', '❌ Insert biodata gagal:', err.message);
+        loggerInst.log('error', '🔍 Mencari mahasiswa yang sudah ada...');
+        const found = await this.cariMahasiswaLengkap({
+          nik: payload.biodata.nik,
+          email: payload.biodata.email,
+          nama: payload.biodata.nama_mahasiswa,
+          jenis_kelamin: payload.biodata.jenis_kelamin,
+          tanggal_lahir: payload.biodata.tanggal_lahir
+        });
+        id_mahasiswa = found?.id_mahasiswa || null;
+        if (!id_mahasiswa) {
+            loggerInst.log('error', 'Mahasiswa tidak ditemukan');
+            throw new Error(`Gagal insert biodata dan mahasiswa tidak ditemukan. Error: ${err.message}`);
+        }
+        loggerInst.log('success', '✅ Mahasiswa ditemukan (existing), id_mahasiswa:', id_mahasiswa);
+      }
+
+    // 2. Cek apakah riwayat sudah ada (hanya jika mahasiswa sudah ada sebelumnya)
+    if (!biodataBaru) {
+      const riwayatAda = await this.cekRiwayatMahasiswa(id_mahasiswa);
+      loggerInst.log('info', '🔍 Cek riwayat mahasiswa:', riwayatAda ? 'sudah ada' : 'belum ada');
+      if (riwayatAda) {
+        console.log('⏭️ Riwayat sudah ada, tidak perlu insert lagi');
+        loggerInst.log('info', 'Riwayat sudah ada, tidak perlu insert', { id_mahasiswa });
+        return {
+          skipped: true,
+          message: 'Riwayat sudah ada, tidak perlu insert',
+          id_mahasiswa,
+          _display: payload._display || { nama: payload.biodata?.nama_mahasiswa, nim: payload.riwayat?.nim }
+        };
+      }
+    }
+
+    // 3. Insert riwayat
+    const riwayat = { ...payload.riwayat, id_mahasiswa };
+    try {
+      loggerInst.log('info', '🔵 Mencoba insert riwayat...');
+      const result = await this.insertRiwayatPendidikanMahasiswa(riwayat);
+      loggerInst.log('info', '✅ Insert riwayat berhasil', { message: result });
+      return result;
+    } catch (err) {
+      loggerInst.log('error', '❌ Insert riwayat gagal:', err.message);
+      throw new Error(`Biodata / Riwayat Gagal: ${err.message}. id_mahasiswa: ${id_mahasiswa}`);
+    }
+  }
+
+  async insertBiodataMahasiswa(record) {
+    const { _display, ...cleanRecord } = record;
+    try {
+      const res = await this.callSafe('InsertBiodataMahasiswa', { record: cleanRecord });
+
+      let id_mahasiswa = null;
+      const data = this.extractData(res);
+      if (data) {
+        if (typeof data === 'string' && data.length === 36) {
+          id_mahasiswa = data;
+        } else if (data.id_mahasiswa) {
+          id_mahasiswa = data.id_mahasiswa;
+        }
+      }
+      if (!id_mahasiswa && record.nik) {
+        id_mahasiswa = await this.findMahasiswaByNIK(record.nik);
+      }
+
+      if (!id_mahasiswa) {
+        loggerInst.log('error', 'Gagal mendapatkan id_mahasiswa');
+        throw new Error('Gagal mendapatkan id_mahasiswa dari pencarian NIK');
+      }
+
+      return { error_code: 0, error_desc: 'Biodata berhasil disimpan', id_mahasiswa };
+
+    } catch (err) {
+      // Cari mahasiswa yang sudah ada
+      const existing = await this.cariMahasiswaLengkap({
+        nik: record.nik,
+        email: record.email,
+        nama: record.nama_mahasiswa,
+        jenis_kelamin: record.jenis_kelamin,
+        tanggal_lahir: record.tanggal_lahir
+      });
+      if (existing && existing.id_mahasiswa) {
+        return {
+          skipped: true,
+          message: 'Biodata mahasiswa sudah ada',
+          id_mahasiswa: existing.id_mahasiswa,
+          _display: record._display || { nama: record.nama_mahasiswa }
+        };
+      }
+      throw err;
+    }
+  }
+
+  async insertRiwayatPendidikanMahasiswa(record) {
+    const { _display, ...cleanRecord } = record;
+    const existingRiwayat = await this.cekRiwayatMahasiswa(cleanRecord.id_mahasiswa);
+    if (existingRiwayat) {
+      return {
+        skipped: true,
+        message: 'Riwayat pendidikan mahasiswa sudah ada',
+        id_mahasiswa: cleanRecord.id_mahasiswa,
+        _display: record._display || { nim: record.nim, nama: record.nama_mahasiswa }
+      };
+    }
+    return this.callSafe('InsertRiwayatPendidikanMahasiswa', { record: cleanRecord });
+  }
 
   async insertKelasKuliah(record) {
     const { _display, ...cleanRecord } = record;

@@ -10,7 +10,7 @@ export class GridEditor {
   }
 
   render() {
-    let html = `<div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr class="bg-gray-200 dark:bg-gray-700">
+    let html = `<div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr>
       <th class="p-2"><input type="checkbox" id="select-all"></th>
       <th class="p-2">No</th>`;
     this.fields.forEach(f => html += `<th class="p-2">${f}</th>`);

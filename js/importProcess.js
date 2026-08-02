@@ -54,7 +54,7 @@ export class ImportProcess {
     for (const row of batch) {
       if (!this.isRunning) break;
 
-       console.log('Processing row:', row);
+      //  console.log('Processing row:', row);
 
       if (this.settings.skipInvalid && row.__errors && Object.keys(row.__errors).length > 0) {
         this.totalSkipped++;
@@ -62,6 +62,19 @@ export class ImportProcess {
           timestamp: new Date().toISOString(),
           type: 'skipped',
           message: 'Data tidak valid',
+          row: this.extractRowSummary(row)
+        });
+        this.notifyProgress(progressCallback);
+        continue;
+      }
+
+      // Tangani objek yang sengaja dilewati (misal riwayat sudah ada)
+      if (row && row.skipped) {
+        this.totalSuccess++; 
+        this.realtimeLogs.push({
+          timestamp: new Date().toISOString(),
+          type: 'success',
+          message: row.message || 'Data dilewati',
           row: this.extractRowSummary(row)
         });
         this.notifyProgress(progressCallback);
@@ -76,7 +89,7 @@ export class ImportProcess {
         let arg = row;
         
         // Jika row memiliki properti 'type' dan 'payload', gunakan payload dan tentukan method
-        if (row && row.type === 'update' || row.type === 'existing') {
+        if (row && (row.type === 'update' || row.type === 'existing')) {
           arg = { key: row.key, record: row.record };
           apiMethod = this.api['updateKomponenEvaluasiKelas']; // atau method spesifik
         } else if (row && row.type === 'insert') {
@@ -93,7 +106,20 @@ export class ImportProcess {
 
       try {  
         if (typeof apiMethod !== 'function') throw new Error(`Method ${this.method} tidak tersedia`);
-        await apiMethod.call(this.api, arg);
+        const apiResult = await apiMethod.call(this.api, arg);
+
+        // Periksa apakah hasilnya adalah objek yang sengaja dilewati
+        if (apiResult && apiResult.skipped) {
+          this.totalSuccess++;
+          this.realtimeLogs.push({
+            timestamp: new Date().toISOString(),
+            type: 'success',
+            message: apiResult.message || 'Data dilewati',
+            row: this.extractRowSummary(arg) // gunakan arg asli untuk summary
+          });
+          this.notifyProgress(progressCallback);
+          continue;
+        }
 
         // ✅ Sukses
         this.totalSuccess++;

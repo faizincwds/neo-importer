@@ -17,13 +17,10 @@ const METHOD_GROUPS = {
   'Nilai Perkuliahan Kelas (KHS)': [
     { value: 'UpdateNilaiLengkap', label: '[Add] Nilai & Komponen Perkuliahan Kelas' },
   ],
-  //proses
   'Data Mahasiswa': [
+    { value: 'InsertMahasiswaLengkap', label: '[Add] Biodata & Riwayat Pendidikan' },
     { value: 'InsertBiodataMahasiswa', label: '[Add] Biodata Mahasiswa' },
     { value: 'InsertRiwayatPendidikanMahasiswa', label: '[Add] Riwayat Pendidikan Mahasiswa' },
-    { value: 'UpdateRiwayatPendidikanMahasiswa', label: '[Update] Riwayat Pendidikan Mahasiswa' },
-    { value: 'InsertPerubahanRiwayatPendidikan', label: '[Add] Perubahan Riwayat Pendidikan' },
-    { value: 'UpdatePerubahanRiwayatPendidikan', label: '[Update] Perubahan Riwayat Pendidikan' },
   ],
 
   // BELUM dalam perkembangan
@@ -90,20 +87,18 @@ const TEMPLATE_FILES = {
   InsertPesertaKelasKuliah        : '3_insert_peserta_kelas_kuliah.xlsx',
   InsertKomponenEvaluasiKelas     : '4_insert_komponen_evaluasi_kelas.xlsx',
   UpdateNilaiLengkap              : '5_insert_input_nilai_perkuliahan_kelas.xlsx',
+  InsertMahasiswaLengkap          : '6_insert_bio_dan_riwayat_mahasiswa.xlsx',
 };
 
 const METHOD_CONFIG = {
 
-  InsertBiodataMahasiswa: {
+  InsertMahasiswaLengkap: {
     targetFields: [
-      'nama', 'tempat_lahir', 'tanggal_lahir', 'jenis_kelamin',
-      'nik',
-      'id_agama', 'agama_nama',
-      'nisn', 'npwp',
-      'kewarganegaraan',
+      'nim', 'nama', 'tempat_lahir', 'tanggal_lahir', 'jenis_kelamin',
+      'nik', 'id_agama', 'agama_nama',
+      'nisn', 'npwp', 'kewarganegaraan',
       'jalan', 'rt', 'rw', 'dusun', 'kelurahan_nama',
-      'kecamatan_nama', 'id_kecamatan',
-      'kode_pos',
+      'kecamatan_nama', 'id_kecamatan', 'kode_pos',
       'id_jenis_tinggal', 'jenis_tinggal_nama',
       'id_alat_transportasi', 'alat_transportasi_nama',
       'telepon', 'handphone', 'email',
@@ -120,14 +115,194 @@ const METHOD_CONFIG = {
       'id_pendidikan_wali', 'pendidikan_wali_nama',
       'id_pekerjaan_wali', 'pekerjaan_wali_nama',
       'id_penghasilan_wali', 'penghasilan_wali_nama',
-      // 'id_kebutuhan_khusus_mahasiswa', 'id_kebutuhan_khusus_mahasiswa_nama',
-      // 'id_kebutuhan_khusus_ayah', 'id_kebutuhan_khusus_ayah_nama',
-      // 'id_kebutuhan_khusus_ibu', 'id_kebutuhan_khusus_ibu_nama',
+      'jalur_pendaftaran_nama', 'id_jalur_daftar',
+      'jenis_pendaftaran_nama', 'id_jenis_daftar',
+      'tanggal_masuk_kuliah',
+      'id_periode_masuk',
+      'kode_prodi', 'nama_prodi',
+      'pembiayaan_nama', 'id_pembiayaan',
+      'biaya_masuk',
     ],
     requiredFields: [
       'nama', 'tempat_lahir', 'tanggal_lahir', 'jenis_kelamin',
-      'nik', 'id_agama', 'kewarganegaraan',
-      'kelurahan_nama',
+      'nik', 'nisn', 'handphone', 'email',
+      'id_agama', 'id_kecamatan','id_jenis_tinggal', 'id_alat_transportasi',
+      'id_pendidikan_ayah', 'id_pekerjaan_ayah', 'id_penghasilan_ayah',
+      'id_pendidikan_ibu', 'id_pekerjaan_ibu', 'id_penghasilan_ibu',
+      'kewarganegaraan', 'kelurahan_nama',
+      'penerima_kps', 'nama_ibu',
+      'nim', 'id_jalur_daftar','id_pembiayaan', 'id_jenis_daftar',
+      'id_periode_masuk', 'tanggal_masuk_kuliah', 'kode_prodi', 'biaya_masuk'
+    ],
+    transformFn: function(row) {
+      const biodata = {
+        nama_mahasiswa: sanitizeText(row.nama || ''),
+        jenis_kelamin: String(row.jenis_kelamin || '').charAt(0).toUpperCase(),
+        tempat_lahir: sanitizeText(row.tempat_lahir || ''),
+        tanggal_lahir: row.tanggal_lahir ? String(row.tanggal_lahir).trim() : '',
+        id_agama: parseInt(row.id_agama) || 1,
+        nik: String(row.nik || '').trim(),
+        nisn: String(row.nisn || '').trim(),
+        npwp: String(row.npwp || '').trim(),
+        kewarganegaraan: String(row.kewarganegaraan || 'ID').trim(),
+        jalan: sanitizeText(row.jalan || ''),
+        dusun: sanitizeText(row.dusun || ''),
+        rt: parseInt(row.rt) || 0,
+        rw: parseInt(row.rw) || 0,
+        kelurahan: sanitizeText(row.kelurahan_nama || ''),
+        kode_pos: String(row.kode_pos || '').trim(),
+        id_wilayah: String(row.id_kecamatan || '').trim(),
+        id_jenis_tinggal: parseInt(row.id_jenis_tinggal) || 1,
+        id_alat_transportasi: parseInt(row.id_alat_transportasi) || 1,
+        telepon: String(row.telepon || '').trim(),
+        handphone: String(row.handphone || '').trim(),
+        email: String(row.email || '').trim(),
+        penerima_kps: row.penerima_kps === '1' ? 1 : 0,
+        nomor_kps: String(row.nomor_kps || '').trim(),
+        nik_ayah: String(row.nik_ayah || '').trim(),
+        nama_ayah: sanitizeText(row.nama_ayah || ''),
+        tanggal_lahir_ayah: row.tanggal_lahir_ayah ? String(row.tanggal_lahir_ayah).trim() : '',
+        id_pendidikan_ayah: parseInt(row.id_pendidikan_ayah) || '',
+        id_pekerjaan_ayah: parseInt(row.id_pekerjaan_ayah) || '',
+        id_penghasilan_ayah: parseInt(row.id_penghasilan_ayah) || '',
+        nik_ibu: String(row.nik_ibu || '').trim(),
+        nama_ibu_kandung: sanitizeText(row.nama_ibu || ''),
+        tanggal_lahir_ibu: row.tanggal_lahir_ibu ? String(row.tanggal_lahir_ibu).trim() : '',
+        id_pendidikan_ibu: parseInt(row.id_pendidikan_ibu) || '',
+        id_pekerjaan_ibu: parseInt(row.id_pekerjaan_ibu) || '',
+        id_penghasilan_ibu: parseInt(row.id_penghasilan_ibu) || '',
+        nama_wali: sanitizeText(row.nama_wali || ''),
+        tanggal_lahir_wali: row.tanggal_lahir_wali ? String(row.tanggal_lahir_wali).trim() : '',
+        id_pendidikan_wali: parseInt(row.id_pendidikan_wali) || '',
+        id_pekerjaan_wali: parseInt(row.id_pekerjaan_wali) || '',
+        id_penghasilan_wali: parseInt(row.id_penghasilan_wali) || '',
+      };
+
+      const riwayat = {
+        nim: String(row.nim || '').trim(),
+        id_jenis_daftar: parseInt(row.id_jenis_daftar) || 1,
+        id_jalur_daftar: parseInt(row.id_jalur_daftar) || 1,
+        id_periode_masuk: row.__id_semester || '',
+        tanggal_daftar: row.tanggal_masuk_kuliah ? String(row.tanggal_masuk_kuliah).trim() : '',
+        id_perguruan_tinggi: row.__id_perguruan_tinggi || '',
+        id_prodi: row.__id_prodi || '',
+        // id_bidang_minat: null,
+        // sks_diakui: null,
+        // id_perguruan_tinggi_asal: null,
+        // id_prodi_asal: null,
+        id_pembiayaan: parseInt(row.id_pembiayaan) || '',
+        biaya_masuk: parseFloat(row.biaya_masuk) || 0,
+      };
+
+      return {
+        biodata,
+        riwayat,
+        _display: { 
+          nama: row.nama, 
+          nim: row.nim 
+        }
+      };
+    },
+    performLookup: async function(row, lookupEngine) {
+      row.__errors = {};
+
+      // === Lookup Biodata ===
+      const biodataLookups = [
+        ['agama_nama', 'id_agama', 'GetAgama', 'nama_agama', 'id_agama'],
+        ['jenis_tinggal_nama', 'id_jenis_tinggal', 'GetJenisTinggal', 'nama_jenis_tinggal', 'id_jenis_tinggal'],
+        ['alat_transportasi_nama', 'id_alat_transportasi', 'GetAlatTransportasi', 'nama_alat_transportasi', 'id_alat_transportasi'],
+        ['kecamatan_nama', 'id_kecamatan', 'GetWilayah', 'nama_wilayah', 'id_wilayah'],
+        ['pendidikan_ayah_nama', 'id_pendidikan_ayah', 'GetJenjangPendidikan', 'nama_jenjang_didik', 'id_jenjang_didik'],
+        ['pendidikan_ibu_nama', 'id_pendidikan_ibu', 'GetJenjangPendidikan', 'nama_jenjang_didik', 'id_jenjang_didik'],
+        ['pendidikan_wali_nama', 'id_pendidikan_wali', 'GetJenjangPendidikan', 'nama_jenjang_didik', 'id_jenjang_didik'],
+        ['pekerjaan_ayah_nama', 'id_pekerjaan_ayah', 'GetPekerjaan', 'nama_pekerjaan', 'id_pekerjaan'],
+        ['pekerjaan_ibu_nama', 'id_pekerjaan_ibu', 'GetPekerjaan', 'nama_pekerjaan', 'id_pekerjaan'],
+        ['pekerjaan_wali_nama', 'id_pekerjaan_wali', 'GetPekerjaan', 'nama_pekerjaan', 'id_pekerjaan'],
+        ['penghasilan_ayah_nama', 'id_penghasilan_ayah', 'GetPenghasilan', 'nama_penghasilan', 'id_penghasilan'],
+        ['penghasilan_ibu_nama', 'id_penghasilan_ibu', 'GetPenghasilan', 'nama_penghasilan', 'id_penghasilan'],
+        ['penghasilan_wali_nama', 'id_penghasilan_wali', 'GetPenghasilan', 'nama_penghasilan', 'id_penghasilan'],
+      ];
+
+      for (const args of biodataLookups) {
+        await lookupEngine.lookupReferensi(...args, row);
+      }
+
+      // === Lookup Riwayat ===
+      if (row.kode_prodi) {
+        const prodi = await lookupEngine.lookupProdi(String(row.kode_prodi).trim());
+        if (prodi) {
+          row.__id_prodi = prodi.id_prodi;
+          row.nama_prodi = prodi.nama_prodi || row.nama_prodi;
+        } else {
+          row.__errors.kode_prodi = 'Prodi tidak ditemukan';
+        }
+      } else if (row.nama_prodi) {
+        const prodi = await lookupEngine.lookupProdiByName(String(row.nama_prodi).trim());
+        if (prodi) {
+          row.__id_prodi = prodi.id_prodi;
+          row.kode_prodi = prodi.kode_prodi;
+        } else {
+          row.__errors.nama_prodi = 'Nama prodi tidak ditemukan';
+        }
+      }
+
+      if (row.id_periode_masuk) {
+        const sem = await lookupEngine.lookupSemester(String(row.id_periode_masuk).trim());
+        row.__id_semester = sem?.id_semester || row.id_periode_masuk;
+      }
+
+      try {
+        const profil = await lookupEngine.api.getProfilPT();
+        if (profil && profil.id_perguruan_tinggi) {
+          row.__id_perguruan_tinggi = profil.id_perguruan_tinggi;
+        }
+      } catch (e) {}
+
+      const riwayatLookups = [
+        ['jalur_pendaftaran_nama', 'id_jalur_daftar', 'GetJalurMasuk', 'nama_jalur_masuk', 'id_jalur_masuk'],
+        ['jenis_pendaftaran_nama', 'id_jenis_daftar', 'GetJenisPendaftaran', 'nama_jenis_daftar', 'id_jenis_daftar'],
+        ['pembiayaan_nama', 'id_pembiayaan', 'GetPembiayaan', 'nama_pembiayaan', 'id_pembiayaan'],
+      ];
+
+      for (const args of riwayatLookups) {
+        await lookupEngine.lookupReferensi(...args, row);
+      }
+
+      const errs = Object.values(row.__errors).filter(m => m);
+      row.status = errs.length > 0 ? errs.join('; ') : 'OK';
+    }
+  },
+
+  InsertBiodataMahasiswa: {
+    targetFields: [
+      'nama', 'tempat_lahir', 'tanggal_lahir', 'jenis_kelamin',
+      'nik', 'id_agama', 'agama_nama',
+      'nisn', 'npwp', 'kewarganegaraan',
+      'jalan', 'rt', 'rw', 'dusun', 'kelurahan_nama',
+      'kecamatan_nama', 'id_kecamatan','kode_pos',
+      'id_jenis_tinggal', 'jenis_tinggal_nama',
+      'id_alat_transportasi', 'alat_transportasi_nama',
+      'telepon', 'handphone', 'email',
+      'penerima_kps', 'nomor_kps',
+      'nik_ayah', 'nama_ayah', 'tanggal_lahir_ayah',
+      'id_pendidikan_ayah', 'pendidikan_ayah_nama',
+      'id_pekerjaan_ayah', 'pekerjaan_ayah_nama',
+      'id_penghasilan_ayah', 'penghasilan_ayah_nama',
+      'nik_ibu', 'nama_ibu', 'tanggal_lahir_ibu',
+      'id_pendidikan_ibu', 'pendidikan_ibu_nama',
+      'id_pekerjaan_ibu', 'pekerjaan_ibu_nama',
+      'id_penghasilan_ibu', 'penghasilan_ibu_nama',
+      'nama_wali', 'tanggal_lahir_wali',
+      'id_pendidikan_wali', 'pendidikan_wali_nama',
+      'id_pekerjaan_wali', 'pekerjaan_wali_nama',
+      'id_penghasilan_wali', 'penghasilan_wali_nama',
+    ],
+    requiredFields: [
+      'nama', 'tempat_lahir', 'tanggal_lahir', 'jenis_kelamin','nik', 'nisn', 'handphone', 'email',
+      'id_agama', 'id_kecamatan','id_jenis_tinggal', 'id_alat_transportasi',
+      'id_pendidikan_ayah', 'id_pekerjaan_ayah', 'id_penghasilan_ayah',
+      'id_pendidikan_ibu', 'id_pekerjaan_ibu', 'id_penghasilan_ibu',
+      'kewarganegaraan', 'kelurahan_nama',
       'penerima_kps',
       'nama_ibu',
     ],
@@ -209,9 +384,6 @@ const METHOD_CONFIG = {
         ['penghasilan_ayah_nama', 'id_penghasilan_ayah', 'GetPenghasilan', 'nama_penghasilan', 'id_penghasilan'],
         ['penghasilan_ibu_nama', 'id_penghasilan_ibu', 'GetPenghasilan', 'nama_penghasilan', 'id_penghasilan'],
         ['penghasilan_wali_nama', 'id_penghasilan_wali', 'GetPenghasilan', 'nama_penghasilan', 'id_penghasilan'],
-        // ['id_kebutuhan_khusus_mahasiswa_nama', 'id_kebutuhan_khusus_mahasiswa', 'GetKebutuhanKhusus', 'nama_kebutuhan_khusus', 'id_kebutuhan_khusus'],
-        // ['id_kebutuhan_khusus_ayah_nama', 'id_kebutuhan_khusus_ayah', 'GetKebutuhanKhusus', 'nama_kebutuhan_khusus', 'id_kebutuhan_khusus'],
-        // ['id_kebutuhan_khusus_ibu_nama', 'id_kebutuhan_khusus_ibu', 'GetKebutuhanKhusus', 'nama_kebutuhan_khusus', 'id_kebutuhan_khusus'],
       ];
 
       for (const args of refLookups) {
@@ -234,7 +406,7 @@ const METHOD_CONFIG = {
       'id_pembiayaan', 'pembiayaan_nama',
       'biaya_masuk',
     ],
-    requiredFields: ['nama', 'nim', 'id_jenis_daftar', 'id_periode_masuk', 'tanggal_masuk_kuliah', 'kode_prodi', 'biaya_masuk'],
+    requiredFields: ['nama', 'nim', 'id_jalur_daftar','id_pembiayaan', 'id_jenis_daftar', 'id_periode_masuk', 'tanggal_masuk_kuliah', 'kode_prodi', 'biaya_masuk'],
     transformFn: function(row) {
       return {
         id_mahasiswa: row.__id_mahasiswa || '',
@@ -245,10 +417,10 @@ const METHOD_CONFIG = {
         tanggal_daftar: row.tanggal_masuk_kuliah ? String(row.tanggal_masuk_kuliah).trim() : '',
         id_perguruan_tinggi: row.__id_perguruan_tinggi || '',
         id_prodi: row.__id_prodi || '',
-        id_bidang_minat: null,
-        sks_diakui: 0,
-        id_perguruan_tinggi_asal: null,
-        id_prodi_asal: null,
+        // id_bidang_minat: null,
+        // sks_diakui: 0,
+        // id_perguruan_tinggi_asal: null,
+        // id_prodi_asal: null,
         id_pembiayaan: parseInt(row.id_pembiayaan) || 1,
         biaya_masuk: parseFloat(row.biaya_masuk) || 0,
         _display: {
@@ -1245,7 +1417,7 @@ export function renderInsertView(container) {
   // Aktifkan tombol unduh hanya setelah metode dipilih
   methodSelect.addEventListener('change', () => {
     const selected = methodSelect.value;
-    templateBtn.disabled = !selected;
+    templateBtn.disabled = !selected || !TEMPLATE_FILES[selected];
     nextBtn.disabled = !selected;      // ← tambahkan
   });
 
@@ -1496,7 +1668,7 @@ export function renderInsertView(container) {
           const nim = disp.nim || '';
           const extra = nim ? ` (NIM: ${nim})` : '';
           
-          let info = `[${mk}] ${nama} | [${kelas}] ${aksi} | Ket: ${status}`;
+          let info = `[${mk}] ${nama} | ${kelas} ${aksi} | Ket: ${status}`;
           if (info.length > 155) info = info.substring(0, 150) + '...';
           
           let detail = '';
@@ -1528,9 +1700,9 @@ export function renderInsertView(container) {
                 // Ambil sample log untuk mendapatkan kode MK dan kelas
                 let sampleLog = nilaiAkhirLogs[0] || nilaiKomponenLogs[0] || successLogs[0];
                 const disp = sampleLog?.row?._display || {};
-                const mk = disp.kode_mata_kuliah || disp.id_matkul || '?';
+                const mk = disp.kode_mata_kuliah || disp.id_matkul || '';
                 const nama = disp.nama_mata_kuliah || disp.nama_dosen || disp.nama_mahasiswa || disp.nama_evaluasi || disp.nama_komponen || '';
-                const kelas = disp.kelas || disp.nama_kelas_kuliah || '?';
+                const kelas = disp.kelas || disp.nama_kelas_kuliah || '';
                 const aksi = disp.aksi || disp.tipe || currentMethod;
 
                 // Bentuk string aksi
@@ -1559,9 +1731,9 @@ export function renderInsertView(container) {
             failedLogs.forEach(log => {
                 const disp = log.row._display || {};
 
-                const mk = disp.kode_mata_kuliah || '?';
+                const mk = disp.kode_mata_kuliah || '';
                 const nama = disp.nama_mata_kuliah || disp.nama_dosen || disp.nama_mahasiswa || disp.nama_evaluasi || disp.nama_komponen || '';
-                const kelas = disp.kelas || disp.nama_kelas_kuliah || '?';
+                const kelas = disp.kelas || disp.nama_kelas_kuliah || '';
                 const aksi = disp.tipe || currentMethod;
                 summaryHTML += `<div class="py-1">❌ [${mk}] ${nama} | [${kelas}] ${aksi} Ket: ${log.message}</div>`;
             });
