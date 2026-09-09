@@ -80,7 +80,7 @@ const TEMPLATE_FILES = {
   InsertKomponenEvaluasiKelas     : '4_insert_komponen_evaluasi_kelas.xlsx',
   UpdateNilaiLengkap              : '5_insert_input_nilai_perkuliahan_kelas.xlsx',
   InsertMahasiswaLengkap          : '6_insert_mahasiswa_baru_bio_dan_riwayat.xlsx',
-  // InsertAktivitasMahasiswaLengkap: '6_insert_aktivitas_anggota.xlsx',
+  InsertAktivitasMahasiswaLengkap : '8_insert_aktivitas_skripsi_mahasiswa.xlsx',
 };
 
 const METHOD_CONFIG = {
@@ -1339,7 +1339,7 @@ const METHOD_CONFIG = {
     ],
     requiredFields: [
       'periode', 'jenis_aktivitas_nama', 'judul', 'jenis_anggota_nama',
-      'kode_prodi', 'lokasi',
+      'kode_prodi',
       'nim', 'jenis_peran_nama'
     ],
     transformFn: function(row) {
@@ -1351,7 +1351,6 @@ const METHOD_CONFIG = {
         id_prodi: row.__id_prodi || '',
         id_semester: row.__id_semester || '',
         judul: sanitizeText(row.judul || ''),
-        keterangan: sanitizeText(row.keterangan || ''),
         lokasi: sanitizeText(row.lokasi || ''),
         sk_tugas: row.sk_tugas ? String(row.sk_tugas).trim() : '',
         tanggal_sk_tugas: row.tanggal_sk_tugas ? String(row.tanggal_sk_tugas).trim() : '',
@@ -1504,6 +1503,9 @@ const METHOD_CONFIG = {
       for (const args of refLookups) {
         await lookupEngine.lookupReferensi(...args, row);
       }
+      if (!row.id_kategori_kegiatan) {
+        row.__errors.kategori_kegiatan_nama = 'Kategori kegiatan tidak ditemukan';
+      }
 
       // 4. Validasi pembimbing_ke
       if (!row.pembimbing_ke || isNaN(parseInt(row.pembimbing_ke))) {
@@ -1578,6 +1580,10 @@ const METHOD_CONFIG = {
       ];
       for (const args of refLookups) {
         await lookupEngine.lookupReferensi(...args, row);
+      }
+      
+      if (!row.id_kategori_kegiatan) {
+        row.__errors.kategori_kegiatan_nama = 'Kategori kegiatan tidak ditemukan';
       }
 
       // 4. Validasi penguji_ke

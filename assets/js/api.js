@@ -583,15 +583,127 @@ export class NeoFeederAPI {
     return this.callSafe('InsertRencanaEvaluasi', { record: cleanRecord });
   }
 
-  // Method gabungan
-  async insertAktivitasMahasiswaLengkap(payload) {
-    // 1. Insert aktivitas, ambil id_aktivitas
-    const id_aktivitas = await this.insertAktivitasMahasiswa(payload.aktivitas);
-    if (!id_aktivitas) throw new Error('Gagal mendapatkan id_aktivitas');
+  // Mencari aktivitas berdasarkan judul, prodi, dan semester
+  async cariAktivitasExisting(judul, id_prodi, id_semester) {
+    if (!judul || !id_prodi || !id_semester) return null;
+    const filterStr = `id_prodi = '${id_prodi}' AND id_semester = '${id_semester}' AND judul LIKE '%${judul}%'`;
+    const res = await this.call('GetListAktivitasMahasiswa', { filter: filterStr, limit: 1 });
+    const data = this.extractData(res);
+    return Array.isArray(data) ? data[0] : data;
+  }
 
-    // 2. Insert anggota
-    const anggota = { ...payload.anggota, id_aktivitas };
-    return this.insertAnggotaAktivitasMahasiswa(anggota);
+  // Mencari anggota aktivitas berdasarkan id_aktivitas dan id_registrasi_mahasiswa
+  async cariAnggotaExisting(id_aktivitas, id_registrasi_mahasiswa) {
+    if (!id_aktivitas || !id_registrasi_mahasiswa) return null;
+    const filterStr = `id_aktivitas = '${id_aktivitas}' AND id_registrasi_mahasiswa = '${id_registrasi_mahasiswa}'`;
+    const res = await this.call('GetListAnggotaAktivitasMahasiswa', { filter: filterStr, limit: 1 });
+    const data = this.extractData(res);
+    return Array.isArray(data) ? data[0] : data;
+  }
+
+  // Cari bimbingan existing
+  async cariBimbinganExisting(id_aktivitas, id_kategori_kegiatan, id_dosen, pembimbing_ke) {
+    if (!id_aktivitas || !id_dosen || !id_kategori_kegiatan) return null;
+    const filterStr = `id_aktivitas = '${id_aktivitas}' AND id_kategori_kegiatan = '${id_kategori_kegiatan}' AND id_dosen = '${id_dosen}' AND pembimbing_ke = '${pembimbing_ke}'`;
+    const res = await this.call('GetListBimbingMahasiswa', { filter: filterStr, limit: 1 });
+    const data = this.extractData(res);
+    return Array.isArray(data) ? data[0] : data;
+  }
+
+  // Cari penguji existing
+  async cariUjianExisting(id_aktivitas, id_kategori_kegiatan, id_dosen, penguji_ke) {
+    if (!id_aktivitas || !id_dosen || !id_kategori_kegiatan) return null;
+    const filterStr = `id_aktivitas = '${id_aktivitas}' AND id_kategori_kegiatan = '${id_kategori_kegiatan}' AND id_dosen = '${id_dosen}' AND penguji_ke = '${penguji_ke}'`;
+    const res = await this.call('GetListUjiMahasiswa', { filter: filterStr, limit: 1 });
+    const data = this.extractData(res);
+    return Array.isArray(data) ? data[0] : data;
+  }
+
+  // Override method gabungan dengan validasi duplikasi
+  async insertAktivitasMahasiswaLengkap(payload) {
+    const { aktivitas, anggota, _display } = payload;
+
+    let id_aktivitas;
+    let aktivitasSkipped = false;
+
+    // 1. Cari aktivitas existing
+    const existingAktivitas = await this.cariAktivitasExisting(
+      aktivitas.judul,
+      aktivitas.id_prodi,
+      aktivitas.id_semester
+    );
+
+    if (existingAktivitas?.id_aktivitas) {
+      id_aktivitas = existingAktivitas.id_aktivitas;
+      aktivitasSkipped = true;
+      console.log('⏭️ Aktivitas sudah ada, gunakan id_aktivitas:', id_aktivitas);
+    } else {
+      // Insert aktivitas baru
+      try {
+        id_aktivitas = await this.insertAktivitasMahasiswa(aktivitas);
+        console.log('✅ Aktivitas baru disimpan, id_aktivitas:', id_aktivitas);
+      } catch (err) {
+        // Jika insert gagal, coba cari ulang (mungkin duplikat terdeteksi server)
+        const fallback = await this.cariAktivitasExisting(
+          aktivitas.judul,
+          aktivitas.id_prodi,
+          aktivitas.id_semester
+        );
+        if (fallback?.id_aktivitas) {
+          id_aktivitas = fallback.id_aktivitas;
+          aktivitasSkipped = true;
+          console.log('⚠️ Insert aktivitas gagal, ditemukan yang sudah ada:', id_aktivitas);
+        } else {
+          throw new Error(`Insert aktivitas gagal dan tidak ditemukan existing. Error: ${err.message}`);
+        }
+      }
+    }
+
+    // 2. Cek apakah anggota sudah terdaftar
+    const existingAnggota = await this.cariAnggotaExisting(
+      id_aktivitas,
+      anggota.id_registrasi_mahasiswa
+    );
+
+    if (existingAnggota) {
+      // Anggota sudah ada → lewati
+      return {
+        skipped: true,
+        message: 'Anggota aktivitas sudah ada',
+        id_aktivitas,
+        _display: _display || { judul: aktivitas.judul, nim: anggota.nim || '' }
+      };
+    }
+
+    // 3. Insert anggota baru
+    try {
+      await this.insertAnggotaAktivitasMahasiswa({
+        ...anggota,
+        id_aktivitas
+      });
+    } catch (err) {
+      // Jika gagal karena duplikat, cek lagi
+      const existingAfterFail = await this.cariAnggotaExisting(
+        id_aktivitas,
+        anggota.id_registrasi_mahasiswa
+      );
+      if (existingAfterFail) {
+        return {
+          skipped: true,
+          message: 'Anggota aktivitas sudah ada (terdeteksi setelah error)',
+          id_aktivitas,
+          _display: _display || { judul: aktivitas.judul, nim: anggota.nim || '' }
+        };
+      }
+      throw new Error(`Insert anggota gagal: ${err.message}. id_aktivitas: ${id_aktivitas}`);
+    }
+
+    // Sukses penuh
+    return {
+      error_code: 0,
+      error_desc: 'Aktivitas & anggota berhasil disimpan',
+      data: { id_aktivitas }
+    };
   }
 
   //INSERT AKTIVITAS MAHASISWA
@@ -615,17 +727,56 @@ export class NeoFeederAPI {
     return this.callSafe('InsertAnggotaAktivitasMahasiswa', { record: cleanRecord });
   }
 
-  // Insert Bimbing Mahasiswa
+  // Insert Bimbing dengan cek duplikasi
   async insertBimbingMahasiswa(record) {
     const { _display, ...cleanRecord } = record;
+    const existing = await this.cariBimbinganExisting(
+      cleanRecord.id_aktivitas,
+      cleanRecord.id_kategori_kegiatan,
+      cleanRecord.id_dosen,
+      cleanRecord.pembimbing_ke
+    );
+    if (existing) {
+      return {
+        skipped: true,
+        message: 'Pembimbing sudah ada untuk aktivitas ini',
+        id_bimbing_mahasiswa: existing.id_bimbing_mahasiswa,
+        _display: record._display || {}
+      };
+    }
     return this.callSafe('InsertBimbingMahasiswa', { record: cleanRecord });
   }
-
-  // Insert Uji Mahasiswa
+  // Insert Uji dengan cek duplikasi
   async insertUjiMahasiswa(record) {
     const { _display, ...cleanRecord } = record;
+    const existing = await this.cariUjianExisting(
+      cleanRecord.id_aktivitas,
+      cleanRecord.id_kategori_kegiatan,
+      cleanRecord.id_dosen,
+      cleanRecord.penguji_ke
+    );
+    if (existing) {
+      return {
+        skipped: true,
+        message: 'Penguji sudah ada untuk aktivitas ini',
+        id_uji: existing.id_uji,
+        _display: record._display || {}
+      };
+    }
     return this.callSafe('InsertUjiMahasiswa', { record: cleanRecord });
   }
+
+  // Insert Bimbing Mahasiswa
+  // async insertBimbingMahasiswa(record) {
+  //   const { _display, ...cleanRecord } = record;
+  //   return this.callSafe('InsertBimbingMahasiswa', { record: cleanRecord });
+  // }
+
+  // Insert Uji Mahasiswa
+  // async insertUjiMahasiswa(record) {
+  //   const { _display, ...cleanRecord } = record;
+  //   return this.callSafe('InsertUjiMahasiswa', { record: cleanRecord });
+  // }
 
   // UPDATE
   async updateKomponenEvaluasiKelas(payload) {
