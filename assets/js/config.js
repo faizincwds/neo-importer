@@ -1,5 +1,6 @@
 // export const API_BASE = 'http://localhost:3003/ws/live2.php';
 // export const API_BASE = 'http://localhost:3003/ws/sandbox2.php';
+export const DEBUG_API = false; // true untuk menampilkan log API di console
 export const API_BASE = localStorage.getItem('nf_api_url') || 'http://localhost:3003';
 export const API_TYPE = localStorage.getItem('nf_api_type') || 'live2.php';
 export const STORAGE_KEYS = {
@@ -14,9 +15,9 @@ export const STORAGE_KEYS = {
 };
 
 export const IMPORT_DEFAULTS = {
-  batchSize: 5, // (jumlah baris per batch)
-  delay: 500, // (jeda antar baris dalam milidetik)
-  retry: 0, // (jumlah percobaan ulang jika gagal)
+  batchSize: 10, // (jumlah baris per batch)
+  delay: 100, // (jeda antar baris dalam milidetik)
+  retry: 1, // (jumlah percobaan ulang jika gagal)
   continueOnError: true,
   skipInvalid: true,
   timeout: 30000,
@@ -140,6 +141,27 @@ export const FIELD_SYNONYMS = {
   pembiayaan_nama: ['pembiayaan','bayar', 'nama pembiayaan', 'jenis pembiayaan'],
   id_periode_masuk: ['id periode masuk', 'periode masuk', 'mulai semester'],
   biaya_masuk: ['biaya masuk', 'jumlah biaya masuk', 'uang kuliah'],
+
+  // ========== AKTIVITAS MAHASISWA ==========
+  id_jenis_aktivitas: ['id jenis aktivitas', 'kode jenis aktivitas', 'id_jenis_aktivitas'],
+  jenis_aktivitas_nama: ['jenis aktivitas', 'nama jenis aktivitas', 'jenis_aktivitas'],
+  jenis_anggota_nama: ['jenis anggota', 'nama jenis anggota', 'jenis_anggota'],
+  judul: ['judul', 'title', 'judul kegiatan', 'judul aktivitas'],
+  lokasi: ['lokasi', 'location', 'tempat'],
+  sk_tugas: ['sk tugas','nomor sk tugas', 'nomor sk', 'sk', 'no sk'],
+  tanggal_sk_tugas: ['tanggal sk tugas', 'tanggal sk', 'tgl sk'],
+  tanggal_mulai: ['tanggal mulai', 'tanggal_mulai', 'start date'],
+  tanggal_selesai: ['tanggal selesai', 'tanggal_selesai', 'end date'],
+  keterangan: ['keterangan','ket', 'description', 'notes'],
+
+  // Anggota Aktivitas
+  jenis_peran_nama: ['jenis peran', 'nama peran', 'peran', 'id_jenis_peran'],
+
+  // Pembimbing & Penguji
+  pembimbing_ke: ['pembimbing ke', 'pembimbing_ke', 'dosen pembimbing'],
+  penguji_ke: ['penguji ke', 'penguji_ke', 'dosen penguji'],
+  id_kategori_kegiatan: ['id kategori kegiatan', 'kode kategori'],
+  kategori_kegiatan_nama: ['kategori kegiatan', 'nama kategori', 'kategori'],
 };
 
 export const DICTIONARY_CACHE_KEY = 'custom_dictionary';

@@ -33,12 +33,11 @@ export function initViewManager(mainContent) {
       case 'config':
         renderConfigView(mainContent);
         break;
-      // ... lainnya
       default:
         mainContent.innerHTML = `<div class="glass p-6 rounded-2xl"><h2 class="text-xl font-bold">${viewName} (Segera hadir)</h2></div>`;
     }
 
-    // ✅ MASUKKAN KEMBALI kotak log DI PALING BAWAH
+    // MASUKKAN KEMBALI kotak log DI PALING BAWAH
     if (logWrapper) mainContent.appendChild(logWrapper);
 
     // Update active state

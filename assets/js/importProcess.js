@@ -54,7 +54,7 @@ export class ImportProcess {
     for (const row of batch) {
       if (!this.isRunning) break;
 
-      //  console.log('Processing row:', row);
+       console.log('Processing row:', row);
 
       if (this.settings.skipInvalid && row.__errors && Object.keys(row.__errors).length > 0) {
         this.totalSkipped++;

@@ -64,7 +64,7 @@ export class LookupEngine {
     try {
       const list = await this.api.getProdi();
       const arr = Array.isArray(list) ? list : (list?.data || list?.result || []);
-      // console.log('GetProdi result:', arr);
+      console.log('GetProdi result:', arr);
       const found = arr.find(p => {
         const kodeProdi = (p.kode_prodi || p.kode_program_studi || p.kd_prodi || '').toString().trim();
         return kodeProdi === kode.toString().trim();
@@ -137,9 +137,9 @@ export class LookupEngine {
       if (found) {
         const result = {
           id_dosen: found.id_dosen,
+          nama_dosen: found.nama_dosen,
           nuptk: found.nuptk,
           nidn: found.nidn,
-          nama_dosen: found.nama_dosen,
           _raw: found
         };
         this.cache[key] = result;
@@ -147,6 +147,28 @@ export class LookupEngine {
       }
     } catch (e) {
       console.warn('Lookup dosen by NIDN/NUPTK failed', e);
+    }
+    return null;
+  }
+
+  async lookupDosenByNidn(nidn) {
+    if (!nidn) return null;
+    const key = `dosen_nidn_${nidn}`;
+    if (this.cache[key]) return this.cache[key];
+    try {
+      const list = await this.api.getListDosen();
+      const arr = Array.isArray(list) ? list : (list?.data || []);
+      const found = arr.find(d => d.nidn === nidn);
+      if (found) {
+        this.cache[key] = { 
+          id_dosen: found.id_dosen, 
+          nama_dosen: found.nama_dosen, 
+          nidn: found.nidn, 
+          nuptk: found.nuptk };
+        return this.cache[key];
+      }
+    } catch (e) {
+      console.warn('Lookup dosen by NIDN failed', e);
     }
     return null;
   }
@@ -323,14 +345,12 @@ export class LookupEngine {
     return null;
   }
 
-  // Cari id_wilayah berdasarkan nama kecamatan (jika diperlukan)
   async lookupWilayah(namaKecamatan, level = 3) {
     if (!namaKecamatan) return null;
     const clean = namaKecamatan.trim().toLowerCase();
     const key = `wilayah_${level}_${clean}`;
     if (this.cache[key]) return this.cache[key];
     try {
-      // Ambil semua data wilayah (bisa banyak, sebaiknya difilter di server jika memungkinkan)
       const list = await this.api.call('GetWilayah');
       const arr = Array.isArray(list?.data) ? list.data : (Array.isArray(list) ? list : []);
       const found = arr.find(item => 
@@ -550,7 +570,7 @@ async lookupKomponenEvaluasiByIdUrut(kelasId, jenisEvaluasi, nomorUrut) {
   }
 
   async getRencanaEvaluasiByMatkul(kodeMk, namaEvaluasi) {
-    const list = await this.api.getListRencanaEvaluasi({ kode_mata_kuliah: kodeMk }); // belum ada? tambahkan di api.js
+    const list = await this.api.getListRencanaEvaluasi({ kode_mata_kuliah: kodeMk }); 
     const arr = Array.isArray(list) ? list : (list?.data || []);
     return arr.find(e => e.kode_mata_kuliah === kodeMk && e.nama_evaluasi === namaEvaluasi);
   }
@@ -602,5 +622,117 @@ async lookupKomponenEvaluasiByIdUrut(kelasId, jenisEvaluasi, nomorUrut) {
     }
     return null;
   }
+
+  // ======================== AKTIVITAS MAHASISWA ========================
+  // Cari aktivitas berdasarkan judul, prodi, semester
+  async lookupAktivitas(judul, idProdi, idSemester) {
+    if (!judul || !idProdi || !idSemester) return null;
+    const key = `akt_${idProdi}_${idSemester}_${judul.trim().toLowerCase()}`;
+    if (this.cache[key]) return this.cache[key];
+    try {
+      const res = await this.api.call('GetListAktivitasMahasiswa', {
+        filter: `id_prodi = '${idProdi}' AND id_semester = '${idSemester}' AND judul LIKE '%${judul}%'`,
+        limit: 1
+      });
+      const data = this.api.extractData(res);
+      const found = Array.isArray(data) ? data[0] : data;
+      console.log('Lookup AK response:', data);
+      if (found && found.id_aktivitas) {
+        this.cache[key] = found;
+        return found;
+      }
+    } catch (e) {
+      console.warn('Lookup aktivitas gagal:', e);
+    }
+    return null;
+  }
+
+  async lookupAktivitasById(idAktivitas) {
+    if (!idAktivitas) return null;
+    const key = `aktivitas_id_${idAktivitas}`;
+    if (this.cache[key]) return this.cache[key];
+    try {
+      const res = await this.api.call('GetListAktivitasMahasiswa', {
+        filter: `id_aktivitas = '${idAktivitas}'`,
+        limit: 1
+      });
+      const data = this.api.extractData(res);
+      const found = Array.isArray(data) ? data[0] : data;
+      if (found && found.id_aktivitas) {
+        this.cache[key] = found;
+        return found;
+      }
+    } catch (e) {
+      console.warn('Lookup aktivitas by ID gagal:', e);
+    }
+    return null;
+  }
+
+  async lookupAktivitasByNim(nim) {
+    if (!nim) return null;
+    const key = `aktivitas_by_nim_${nim}`;
+    if (this.cache[key]) return this.cache[key];
+
+    try {
+      // Panggil GetListAnggotaAktivitasMahasiswa dengan filter nim
+      const list = await this.api.getListAnggotaAktivitasMahasiswa({ nim: nim.trim() });
+      const arr = Array.isArray(list) ? list : (list?.data || []);
+      const found = arr[0];
+      if (found && found.id_aktivitas) {
+        // Dari data anggota, kita sudah punya id_aktivitas, judul, nama_mahasiswa
+        const result = {
+          id_aktivitas: found.id_aktivitas,
+          judul: found.judul || '',
+          nama_mahasiswa: found.nama_mahasiswa || '',
+          id_registrasi_mahasiswa: found.id_registrasi_mahasiswa || '',
+          jenis_peran: found.jenis_peran || '',
+        };
+        this.cache[key] = result;
+        return result;
+      }
+    } catch (e) {
+      console.warn('Lookup aktivitas by NIM gagal:', e);
+    }
+    return null;
+  }
+
+// Cari dosen berdasarkan nama
+  async lookupDosenByNama(nama) {
+    if (!nama) return null;
+    const key = `dosen_nama_${nama.trim().toLowerCase()}`;
+    if (this.cache[key]) return this.cache[key];
+    try {
+      const list = await this.api.getListDosen();
+      const arr = Array.isArray(list) ? list : (list?.data || []);
+      const found = arr.find(d => (d.nama_dosen || '').toLowerCase() === nama.trim().toLowerCase());
+      if (found) {
+        const result = {
+          id_dosen: found.id_dosen,
+          nidn: found.nidn || '',
+          nuptk: found.nuptk || '',
+          nama_dosen: found.nama_dosen || '',
+        };
+        this.cache[key] = result;
+        return result;
+      }
+      // fallback: cari dengan includes
+      const found2 = arr.find(d => (d.nama_dosen || '').toLowerCase().includes(nama.trim().toLowerCase()));
+      if (found2) {
+        const result = {
+          id_dosen: found2.id_dosen,
+          nidn: found2.nidn || '',
+          nuptk: found2.nuptk || '',
+          nama_dosen: found2.nama_dosen || '',
+        };
+        this.cache[key] = result;
+        return result;
+      }
+    } catch (e) {
+      console.warn('Lookup dosen by nama failed', e);
+    }
+    return null;
+  }
+
+
 
 }

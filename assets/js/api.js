@@ -1,4 +1,4 @@
-import { API_BASE, STORAGE_KEYS } from './config.js';
+import { API_BASE, STORAGE_KEYS, DEBUG_API } from './config.js';
 import { loggerInst } from './loggerView.js';
 
 export class NeoFeederAPI {
@@ -22,9 +22,26 @@ export class NeoFeederAPI {
       ...params,
     };
 
-    loggerInst.log('api', `Mengirim permintaan: ${method}`, { url, payload });
-    console.log(`[URL API] Request ${method}`, url);
-    // console.log(`[API] Request ${method}`, payload);
+    const debugPayload = {
+      ...payload,
+      token: payload.token
+        ? `${payload.token.slice(0, 10)}...`
+        : undefined
+    };
+
+    if (DEBUG_API) {
+      console.log(`[Debug API] Request ${method}`, {
+        ...params
+      });
+    }
+
+    console.log(`[API Request] ${method}`, { url, ...params});
+
+    loggerInst.log('api', `Mengirim permintaan: ${method}`, {
+      url,
+      method,
+      params
+    });
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 30000);
@@ -41,7 +58,7 @@ export class NeoFeederAPI {
 
       if (!response.ok) {
         const errorText = await response.text();
-        // ✅ Catat error HTTP
+        // Catat error HTTP
         loggerInst.log('error', `Gagal terhubung API: HTTP ${response.status}`, { status: response.status, respon: errorText });
         console.error(`[API ERROR] HTTP ${response.status}`, errorText);
         throw new Error(`HTTP ${response.status} - ${response.statusText}`);
@@ -49,7 +66,7 @@ export class NeoFeederAPI {
 
       const text = await response.text();
       if (!text) {
-        // ✅ Catat respon kosong
+        // Catat respon kosong
         loggerInst.log('warning', `Respon kosong dari server untuk ${method}`);
         console.error(`[API ERROR] Empty response for ${method}`);
         throw new Error('Server mengembalikan respons kosong');
@@ -59,7 +76,7 @@ export class NeoFeederAPI {
       try {
         json = JSON.parse(text);
       } catch (e) {
-        // ✅ Catat kesalahan format JSON
+        // Catat kesalahan format JSON
         loggerInst.log('error', `Respon bukan JSON untuk ${method}`, { respon: text.substring(0, 200) });
         console.error(`[API ERROR] Respons bukan JSON: ${text.substring(0, 100)}`);
         throw new Error('Respons server bukan JSON yang valid');
@@ -67,24 +84,29 @@ export class NeoFeederAPI {
 
       if (json.error) {
         const msg = typeof json.error === 'string' ? json.error : json.error_description || 'Unknown error';
-        // ✅ Catat error dari API Neo Feeder
+        // Catat error dari API Neo Feeder
         loggerInst.log('error', `API menolak permintaan: ${msg}`, json);
         throw new Error(msg);
       }
 
-      // ✅ Catat keberhasilan
-      loggerInst.log('success', `Berhasil memproses: ${method}`, { ringkasan: this.ringkasData(json) });
+      // Catat keberhasilan
+      if (DEBUG_API) {
+          console.log('[API Response]', `Berhasil memproses: ${method}`, { response: this.ringkasData(json) });
+      }
 
+      loggerInst.log('success', `Berhasil memproses: ${method}`, { ringkasan: this.ringkasData(json) });
+      
       return json;
+
     } catch (error) {
       clearTimeout(timeoutId);
       if (error.name === 'AbortError') {
-        // ✅ Catat timeout
+        // Catat timeout
         loggerInst.log('error', `Permintaan dibatalkan: Timeout 30 detik untuk ${method}`);
         console.error(`[API] Timeout untuk ${method}`);
         throw new Error(`Timeout setelah 30 detik untuk ${method}`);
       }
-      // ✅ Catat kesalahan umum
+      // Catat kesalahan umum
       loggerInst.log('error', `Kesalahan pada ${method}: ${error.message}`);
       console.error(`[API] ${method} failed:`, error.message);
       throw error;
@@ -134,6 +156,7 @@ export class NeoFeederAPI {
             if (typeof response.data === 'object' && !Array.isArray(response.data) && response.data.data !== undefined) {
               return response.data.data;
             }
+            
           return response.data;
         }
       if (response.result !== undefined) return response.result;
@@ -318,6 +341,8 @@ export class NeoFeederAPI {
   async getPenghasilan() { const res = await this.call('GetPenghasilan'); return this.extractData(res); }
   async getKebutuhanKhusus() { const res = await this.call('GetKebutuhanKhusus'); return this.extractData(res); }
   async getPembiayaan() { const res = await this.call('GetPembiayaan'); return this.extractData(res); }
+  async getKategoriKegiatan() { const res = await this.call('GetKategoriKegiatan'); return this.extractData(res); }
+  async getJenisAktivitasMahasiswa() { const res = await this.call('GetJenisAktivitasMahasiswa'); return this.extractData(res); }
   async getWilayah(level = null) {
     let filterStr = '';
     if (level) filterStr = `id_level_wilayah = ${level}`;
@@ -332,7 +357,6 @@ export class NeoFeederAPI {
 
   // Method baru: cari mahasiswa lewat GetBiodataMahasiswa dulu, lalu GetListMahasiswa
   async cariMahasiswaLengkap({ nik, email, nama, jenis_kelamin, tanggal_lahir }) {
-    // 1. Cari di GetBiodataMahasiswa berdasarkan NIK / email
     let biodataArr = null;
     if (nik) {
       const res = await this.call('GetBiodataMahasiswa', { filter: `nik = '${nik}'` });
@@ -343,21 +367,17 @@ export class NeoFeederAPI {
       biodataArr = this.extractData(res);
     }
 
-    // Jika tidak ditemukan di biodata, fallback ke cara lama (GetListMahasiswa dengan filter biasa)
     if (!biodataArr || (Array.isArray(biodataArr) && biodataArr.length === 0)) {
       return this.cariMahasiswa({ nama });
     }
 
-    // Ambil data mahasiswa pertama
     const biodata = Array.isArray(biodataArr) ? biodataArr[0] : biodataArr;
     if (!biodata) return null;
 
-    // 2. Cari di GetListMahasiswa menggunakan nama, jenis kelamin, tanggal lahir dari biodata
     const filterConditions = [];
     if (biodata.nama_mahasiswa) filterConditions.push(`nama_mahasiswa LIKE '%${biodata.nama_mahasiswa}%'`);
     if (biodata.jenis_kelamin) filterConditions.push(`jenis_kelamin = '${biodata.jenis_kelamin}'`);
     if (biodata.tanggal_lahir) {
-      // Tanggal dari GetBiodataMahasiswa sudah dalam format DD-MM-YYYY (contoh: 10-02-2008)
       filterConditions.push(`tanggal_lahir = '${biodata.tanggal_lahir}'`);
     }
     const filterStr = filterConditions.join(' AND ');
@@ -391,6 +411,14 @@ export class NeoFeederAPI {
     if (!nik) return null;
     const found = await this.cariMahasiswa({ nik });
     return (Array.isArray(found) ? found[0] : found)?.id_mahasiswa || null;
+  }
+
+  // Ambil anggota aktivitas berdasarkan NIM
+  async getListAnggotaAktivitasMahasiswa(filter = {}) {
+    let filterStr = '';
+    if (filter.nim) filterStr = `nim = '${filter.nim}'`;
+    const res = await this.call('GetListAnggotaAktivitasMahasiswa', { filter: filterStr, limit: 1 });
+    return this.extractData(res);
   }
 
   async insertMahasiswaLengkap(payload) {
@@ -553,6 +581,50 @@ export class NeoFeederAPI {
   async insertRencanaEvaluasi(record) {
     const { _display, ...cleanRecord } = record; 
     return this.callSafe('InsertRencanaEvaluasi', { record: cleanRecord });
+  }
+
+  // Method gabungan
+  async insertAktivitasMahasiswaLengkap(payload) {
+    // 1. Insert aktivitas, ambil id_aktivitas
+    const id_aktivitas = await this.insertAktivitasMahasiswa(payload.aktivitas);
+    if (!id_aktivitas) throw new Error('Gagal mendapatkan id_aktivitas');
+
+    // 2. Insert anggota
+    const anggota = { ...payload.anggota, id_aktivitas };
+    return this.insertAnggotaAktivitasMahasiswa(anggota);
+  }
+
+  //INSERT AKTIVITAS MAHASISWA
+  async insertAktivitasMahasiswa(record) {
+    const { _display, ...cleanRecord } = record;
+    const res = await this.callSafe('InsertAktivitasMahasiswa', { record: cleanRecord });
+    // Ambil id_aktivitas dari respons
+    const data = this.extractData(res);
+    if (data && data.id_aktivitas) return data.id_aktivitas;
+    if (res.data && typeof res.data === 'string') return res.data;
+    throw new Error('Gagal mendapatkan id_aktivitas setelah insert');
+    console.log('ID AK:', data.id_aktivitas);
+    
+    if (res.data && typeof res.data === 'string') return res.data;
+    throw new Error('Gagal mendapatkan id_aktivitas setelah insert');
+  }
+
+  // Insert Anggota Aktivitas Mahasiswa
+  async insertAnggotaAktivitasMahasiswa(record) {
+    const { _display, ...cleanRecord } = record;
+    return this.callSafe('InsertAnggotaAktivitasMahasiswa', { record: cleanRecord });
+  }
+
+  // Insert Bimbing Mahasiswa
+  async insertBimbingMahasiswa(record) {
+    const { _display, ...cleanRecord } = record;
+    return this.callSafe('InsertBimbingMahasiswa', { record: cleanRecord });
+  }
+
+  // Insert Uji Mahasiswa
+  async insertUjiMahasiswa(record) {
+    const { _display, ...cleanRecord } = record;
+    return this.callSafe('InsertUjiMahasiswa', { record: cleanRecord });
   }
 
   // UPDATE

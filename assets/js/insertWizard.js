@@ -55,19 +55,11 @@ const METHOD_GROUPS = {
   //   { value: 'InsertMatkulKurikulum', label: '[Add] Mata Kuliah Kurikulum' },
   //   { value: 'DeleteMatkulKurikulum', label: '[Delete] Mata Kuliah Kurikulum' },
   // ],
-  // 'Aktivitas Mahasiswa (Penelitian/Skripsi)': [
-  //   { value: 'InsertAktivitasMahasiswa', label: '[Add] Aktivitas Mahasiswa' },
-  //   { value: 'UpdateAktivitasMahasiswa', label: '[Update] Aktivitas Mahasiswa' },
-  //   { value: 'DeleteAktivitasMahasiswa', label: '[Delete] Aktivitas Mahasiswa' },
-  //   { value: 'InsertAnggotaAktivitasMahasiswa', label: '[Add] Anggota Aktivitas Mahasiswa' },
-  //   { value: 'DeleteAnggotaAktivitasMahasiswa', label: '[Delete] Anggota Aktivitas Mahasiswa' },
-  //   { value: 'InsertBimbingMahasiswa', label: '[Add] Pembimbing Mahasiswa' },
-  //   { value: 'UpdateBimbingMahasiswa', label: '[Update] Pembimbing Mahasiswa' },
-  //   { value: 'DeleteBimbingMahasiswa', label: '[Delete] Pembimbing Mahasiswa' },
-  //   { value: 'InsertUjiMahasiswa', label: '[Add] Penguji Mahasiswa' },
-  //   { value: 'UpdateUjiMahasiswa', label: '[Update] Penguji Mahasiswa' },
-  //   { value: 'DeleteUjiMahasiswa', label: '[Delete] Penguji Mahasiswa' },
-  // ],
+  'Aktivitas Mahasiswa (Penelitian/Skripsi)': [
+    { value: 'InsertAktivitasMahasiswaLengkap', label: '[Add] Aktivitas Mahasiswa' },
+    { value: 'InsertBimbingMahasiswa', label: '[Add] Pembimbing Mahasiswa' },
+    { value: 'InsertUjiMahasiswa', label: '[Add] Penguji Mahasiswa' },
+  ],
   // 'Prestasi Mahasiswa': [
   //   { value: 'InsertPrestasiMahasiswa', label: '[Add] Prestasi Mahasiswa' },
   //   { value: 'UpdatePrestasiMahasiswa', label: '[Update] Prestasi Mahasiswa' },
@@ -87,7 +79,8 @@ const TEMPLATE_FILES = {
   InsertPesertaKelasKuliah        : '3_insert_peserta_kelas_kuliah.xlsx',
   InsertKomponenEvaluasiKelas     : '4_insert_komponen_evaluasi_kelas.xlsx',
   UpdateNilaiLengkap              : '5_insert_input_nilai_perkuliahan_kelas.xlsx',
-  InsertMahasiswaLengkap          : '6_insert_bio_dan_riwayat_mahasiswa.xlsx',
+  InsertMahasiswaLengkap          : '6_insert_mahasiswa_baru_bio_dan_riwayat.xlsx',
+  // InsertAktivitasMahasiswaLengkap: '6_insert_aktivitas_anggota.xlsx',
 };
 
 const METHOD_CONFIG = {
@@ -1184,7 +1177,7 @@ const METHOD_CONFIG = {
       'nilai_angka', 'nilai_indeks', 'nilai_huruf',
       'aktivitas_partisipatif', 'hasil_proyek', 'quiz', 'tugas', 'uts', 'uas',
     ],
-    requiredFields: ['periode', 'kode_mata_kuliah', 'nama_kelas', 'nim', 'nilai_indeks', 'nilai_huruf', 'aktivitas_partisipatif', 'quiz', 'tugas', 'uts', 'uas',],
+    requiredFields: ['periode', 'kode_mata_kuliah', 'nama_kelas', 'nim','nilai_angka', 'nilai_indeks', 'nilai_huruf',],
     transformFn: function(row) {
       const records = [];
 
@@ -1333,6 +1326,272 @@ const METHOD_CONFIG = {
       row.status = errs.length > 0 ? errs.join('; ') : 'OK';
     }
   },
+
+  InsertAktivitasMahasiswaLengkap: {
+    targetFields: [
+      'periode', 'jenis_aktivitas_nama', 'judul', 'jenis_anggota_nama',
+      'nim', 'nama_mahasiswa', 'jenis_peran_nama',
+      'kode_prodi', 'nama_prodi',
+      'lokasi', 'sk_tugas', 'tanggal_sk_tugas',
+      'tanggal_mulai', 'tanggal_selesai',
+      'keterangan',
+      'status'
+    ],
+    requiredFields: [
+      'periode', 'jenis_aktivitas_nama', 'judul', 'jenis_anggota_nama',
+      'kode_prodi', 'lokasi',
+      'nim', 'jenis_peran_nama'
+    ],
+    transformFn: function(row) {
+      // Bangun payload aktivitas
+      const aktivitas = {
+        program_mbkm: '0',
+        jenis_anggota: (row.jenis_anggota_nama || '').trim().toLowerCase() === 'kelompok' ? '1' : '0',
+        id_jenis_aktivitas: parseInt(row.id_jenis_aktivitas) || '',
+        id_prodi: row.__id_prodi || '',
+        id_semester: row.__id_semester || '',
+        judul: sanitizeText(row.judul || ''),
+        keterangan: sanitizeText(row.keterangan || ''),
+        lokasi: sanitizeText(row.lokasi || ''),
+        sk_tugas: row.sk_tugas ? String(row.sk_tugas).trim() : '',
+        tanggal_sk_tugas: row.tanggal_sk_tugas ? String(row.tanggal_sk_tugas).trim() : '',
+        tanggal_mulai: row.tanggal_mulai ? String(row.tanggal_mulai).trim() : '',
+        tanggal_selesai: row.tanggal_selesai ? String(row.tanggal_selesai).trim() : '',
+        keterangan: sanitizeText(row.keterangan || ''),
+      };
+
+      // Bangun payload anggota (tanpa id_aktivitas dulu, akan diisi oleh api.js)
+      const peranInput = (row.jenis_peran_nama || '').trim().toLowerCase();
+      let jenisPeran = '';
+      if (peranInput === 'ketua') jenisPeran = '1';
+      else if (peranInput === 'anggota') jenisPeran = '2';
+      else if (peranInput === 'personal' || peranInput === 'individu') jenisPeran = '3';
+      else jenisPeran = '3';
+
+      const anggota = {
+        id_registrasi_mahasiswa: row.__id_registrasi_mahasiswa || '',
+        jenis_peran: jenisPeran,
+      };
+
+      return {
+        aktivitas,
+        anggota,
+        _display: {
+          judul: row.judul,
+          nim: row.nim,
+          nama_mahasiswa: row.nama_mahasiswa || row.nim,
+          kode_prodi: row.kode_prodi
+        }
+      };
+    },
+    performLookup: async function(row, lookupEngine) {
+      row.__errors = {};
+
+      // 1. Semester
+      if (row.periode) {
+        const sem = await lookupEngine.lookupSemester(String(row.periode).trim());
+        row.__id_semester = sem?.id_semester || row.periode;
+      } else {
+        row.__errors.periode = 'Periode harus diisi';
+      }
+
+      // 2. Prodi
+      if (row.kode_prodi) {
+        const prodi = await lookupEngine.lookupProdi(String(row.kode_prodi).trim());
+        if (prodi) {
+          row.__id_prodi = prodi.id_prodi;
+          row.nama_prodi = prodi.nama_prodi || row.nama_prodi;
+        } else {
+          row.__errors.kode_prodi = 'Prodi tidak ditemukan';
+        }
+      } else if (row.nama_prodi) {
+        const prodi = await lookupEngine.lookupProdiByName(String(row.nama_prodi).trim());
+        if (prodi) {
+          row.__id_prodi = prodi.id_prodi;
+          row.kode_prodi = prodi.kode_prodi;
+        } else {
+          row.__errors.nama_prodi = 'Nama prodi tidak ditemukan';
+        }
+      }
+
+      // 3. Jenis Aktivitas (lookup)
+      const refLookups = [
+        ['jenis_aktivitas_nama', 'id_jenis_aktivitas', 'GetJenisAktivitasMahasiswa', 'nama_jenis_aktivitas_mahasiswa', 'id_jenis_aktivitas_mahasiswa'],
+      ];
+      for (const args of refLookups) {
+        await lookupEngine.lookupReferensi(...args, row);
+      }
+
+      // 4. Mahasiswa by NIM
+      if (row.nim) {
+        const mhs = await lookupEngine.lookupRegistrasiMahasiswa(String(row.nim).trim());
+        if (mhs) {
+          row.__id_registrasi_mahasiswa = mhs.id_registrasi_mahasiswa;
+          row.nama_mahasiswa = mhs.nama_mahasiswa || row.nama_mahasiswa;
+        } else {
+          row.__errors.nim = 'Mahasiswa tidak ditemukan';
+        }
+      } else {
+        row.__errors.nim = 'NIM harus diisi';
+      }
+
+      const errs = Object.values(row.__errors).filter(m => m);
+      row.status = errs.length > 0 ? errs.join('; ') : 'OK';
+    }
+  },
+
+  InsertBimbingMahasiswa: {
+    targetFields: [
+      'nim', 'nama_mahasiswa',
+      'id_aktivitas', 'judul',
+      'nama_dosen', 'nidn', 'nuptk',
+      'pembimbing_ke',
+      'id_kategori_kegiatan', 'kategori_kegiatan_nama',
+      'status'
+    ],
+    requiredFields: ['nim', 'nama_dosen', 'pembimbing_ke', 'kategori_kegiatan_nama'],
+    transformFn: function(row) {
+      return {
+        id_aktivitas: row.__id_aktivitas || row.id_aktivitas || '',
+        id_kategori_kegiatan: parseInt(row.id_kategori_kegiatan) || '',
+        id_dosen: row.__id_dosen || '',
+        pembimbing_ke: parseInt(row.pembimbing_ke) || 1,
+        _display: {
+          judul: row.judul || '',
+          nim: row.nim,
+          nama_mahasiswa: row.nama_mahasiswa || row.nim,
+          nama_dosen: row.nama_dosen || ''
+        }
+      };
+    },
+    performLookup: async function(row, lookupEngine) {
+      row.__errors = {};
+
+      // 1. Ambil data aktivitas & mahasiswa dari GetListAnggotaAktivitasMahasiswa
+      if (row.nim) {
+        const anggota = await lookupEngine.lookupAktivitasByNim(String(row.nim).trim());
+        if (anggota && anggota.id_aktivitas) {
+          row.__id_aktivitas = anggota.id_aktivitas;
+          row.id_aktivitas = anggota.id_aktivitas;
+          row.judul = anggota.judul || row.judul;
+          row.nama_mahasiswa = anggota.nama_mahasiswa || row.nama_mahasiswa;
+        } else {
+          row.__errors.nim = 'Data anggota aktivitas untuk NIM ini tidak ditemukan';
+        }
+      } else {
+        row.__errors.nim = 'NIM harus diisi';
+      }
+
+      // 2. Cari dosen berdasarkan nama
+      if (row.nama_dosen) {
+        const dosen = await lookupEngine.lookupDosenByNama(String(row.nama_dosen).trim());
+        if (dosen) {
+          row.__id_dosen = dosen.id_dosen;
+          row.nidn = dosen.nidn || row.nidn;
+          row.nuptk = dosen.nuptk || row.nuptk;
+          row.nama_dosen = dosen.nama_dosen || row.nama_dosen;
+        } else {
+          row.__errors.nama_dosen = 'Dosen tidak ditemukan';
+        }
+      } else {
+        row.__errors.nama_dosen = 'Nama dosen harus diisi';
+      }
+
+      // 3. Kategori kegiatan
+      const refLookups = [
+        ['kategori_kegiatan_nama', 'id_kategori_kegiatan', 'GetKategoriKegiatan', 'nama_kategori_kegiatan', 'id_kategori_kegiatan'],
+      ];
+      for (const args of refLookups) {
+        await lookupEngine.lookupReferensi(...args, row);
+      }
+
+      // 4. Validasi pembimbing_ke
+      if (!row.pembimbing_ke || isNaN(parseInt(row.pembimbing_ke))) {
+        row.__errors.pembimbing_ke = 'Pembimbing ke harus diisi (1/2)';
+      }
+
+      const errs = Object.values(row.__errors).filter(m => m);
+      row.status = errs.length > 0 ? errs.join('; ') : 'OK';
+    }
+  },
+
+  InsertUjiMahasiswa: {
+    targetFields: [
+      'nim', 'nama_mahasiswa',
+      'id_aktivitas', 'judul',
+      'nama_dosen', 'nidn', 'nuptk',
+      'penguji_ke',
+      'id_kategori_kegiatan', 'kategori_kegiatan_nama',
+      'status'
+    ],
+    requiredFields: ['nim', 'nama_dosen', 'penguji_ke', 'kategori_kegiatan_nama'],
+    transformFn: function(row) {
+      return {
+        id_aktivitas: row.__id_aktivitas || row.id_aktivitas || '',
+        id_kategori_kegiatan: parseInt(row.id_kategori_kegiatan) || '',
+        id_dosen: row.__id_dosen || '',
+        penguji_ke: parseInt(row.penguji_ke) || 1,
+        _display: {
+          judul: row.judul || '',
+          nim: row.nim,
+          nama_mahasiswa: row.nama_mahasiswa || row.nim,
+          nama_dosen: row.nama_dosen || ''
+        }
+      };
+    },
+    performLookup: async function(row, lookupEngine) {
+      row.__errors = {};
+
+      // 1. Ambil data aktivitas & mahasiswa dari GetListAnggotaAktivitasMahasiswa
+      if (row.nim) {
+        const anggota = await lookupEngine.lookupAktivitasByNim(String(row.nim).trim());
+        if (anggota && anggota.id_aktivitas) {
+          row.__id_aktivitas = anggota.id_aktivitas;
+          row.id_aktivitas = anggota.id_aktivitas;
+          row.judul = anggota.judul || row.judul;
+          row.nama_mahasiswa = anggota.nama_mahasiswa || row.nama_mahasiswa;
+        } else {
+          row.__errors.nim = 'Data anggota aktivitas untuk NIM ini tidak ditemukan';
+        }
+      } else {
+        row.__errors.nim = 'NIM harus diisi';
+      }
+
+      // 2. Cari dosen berdasarkan nama
+      if (row.nama_dosen) {
+        const dosen = await lookupEngine.lookupDosenByNama(String(row.nama_dosen).trim());
+        if (dosen) {
+          row.__id_dosen = dosen.id_dosen;
+          row.nidn = dosen.nidn || row.nidn;
+          row.nuptk = dosen.nuptk || row.nuptk;
+          row.nama_dosen = dosen.nama_dosen || row.nama_dosen;
+        } else {
+          row.__errors.nama_dosen = 'Dosen tidak ditemukan';
+        }
+      } else {
+        row.__errors.nama_dosen = 'Nama dosen harus diisi';
+      }
+
+      // 3. Kategori kegiatan
+      const refLookups = [
+        ['kategori_kegiatan_nama', 'id_kategori_kegiatan', 'GetKategoriKegiatan', 'nama_kategori_kegiatan', 'id_kategori_kegiatan'],
+      ];
+      for (const args of refLookups) {
+        await lookupEngine.lookupReferensi(...args, row);
+      }
+
+      // 4. Validasi penguji_ke
+      if (!row.penguji_ke || isNaN(parseInt(row.penguji_ke))) {
+        row.__errors.penguji_ke = 'Penguji ke harus diisi (1/2/3)';
+      }
+
+      const errs = Object.values(row.__errors).filter(m => m);
+      row.status = errs.length > 0 ? errs.join('; ') : 'OK';
+    }
+  },
+
+  
+
 
 };
 
@@ -1724,7 +1983,12 @@ export function renderInsertView(container) {
                 if (otherLogs.length > 0) parts.push(`${otherLogs.length} Lainnya`);
                 const detailStr = `(${successLogs.length}) Berhasil${parts.length > 0 ? ' | ' + parts.join(' + ') : ''}`;
 
-                summaryHTML += `<div class="py-1">✅ [${mk}] ${nama} | [${kelas}] ${aksiStr} | Ket: ${detailStr} </div>`;
+                // summaryHTML += `<div class="py-1">✅ [${mk}] ${nama} | [${kelas}] ${aksiStr} | Ket: ${detailStr} </div>`;
+                if(sampleLog) {
+                  summaryHTML += `<div class="py-1">✅ [${mk}] ${nama} | [${kelas}] ${aksiStr} | Ket: ${detailStr} </div>`;
+                }else{
+                  summaryHTML += `<div class="py-1">✅ ${aksiStr} | Ket: ${detailStr} </div>`;
+                }
             }
 
             // Detail gagal

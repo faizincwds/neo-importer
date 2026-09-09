@@ -18,16 +18,48 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnLoader = document.getElementById('btn-loader');
   const savedUsername = localStorage.getItem('nf_username');
   const savedPassword = localStorage.getItem('nf_password');
+
+  // ---- Toggle Panel Log ----
+  const logWrapper = document.getElementById('activity-log-wrapper');
+  const logToggleHeader = document.getElementById('log-toggle-header');
+  const logChevron = document.getElementById('log-chevron');
+  const logBody = document.getElementById('activity-log');
+  const logCountSpan = document.getElementById('log-count');
+
+  if (logBody) {
+    const observer = new MutationObserver(() => {
+      const entries = logBody.querySelectorAll('.log-entry, div[class*="py-1"]').length;
+      if (logCountSpan) logCountSpan.textContent = `(${entries})`;
+    });
+    observer.observe(logBody, { childList: true, subtree: true });
+  }
+  // Event klik header
+  function toggleLogPanel() {
+    logWrapper.classList.toggle('log-collapsed');
+  }
+  logToggleHeader.addEventListener('click', toggleLogPanel);
+  if (logChevron) {
+    logChevron.addEventListener('click', (e) => {
+      e.stopPropagation(); // agar tidak memicu dua kali
+      toggleLogPanel();
+    });
+  }
+
+  // Fungsi update jumlah log (panggil setiap kali log bertambah)
+  function updateLogCount() {
+    const entries = logBody.querySelectorAll('.log-entry, div[class*="py-1"]').length;
+    if (logCountSpan) logCountSpan.textContent = `(${entries})`;
+  }
+
   if (savedUsername) document.getElementById('username').value = savedUsername;
   if (savedPassword) document.getElementById('password').value = savedPassword;
 
   loggerInst.init();
-  log('info', 'Aplikasi siap digunakan'); // ✅ Contoh yang benar
+  log('info', 'Aplikasi siap digunakan');
 
   if (clearLogBtn) {
     clearLogBtn.addEventListener('click', () => {
         loggerInst.clearLogs();
-      
     });
   }
 

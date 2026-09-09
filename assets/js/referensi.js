@@ -84,40 +84,40 @@ export async function renderReferensiView(container) {
 
   container.innerHTML = `
     <div class="glass p-6 rounded-2xl">
-      <h2 class="text-2xl font-bold mb-4 dark:text-gray-100">📚 Data Referensi</h2>
-      <p class="mb-4 text-sm text-gray-600 dark:text-gray-400">Pilih endpoint dan atur parameter untuk melihat data.</p>
+      <h2 class="text-2xl font-bold mb-4 ">📚 Data Referensi</h2>
+      <p class="mb-4 text-sm">Pilih endpoint dan atur parameter untuk melihat data.</p>
 
       <div class="mb-6">
         <label class="block text-sm font-medium mb-2">1. Pilih Method</label>
-        <select id="ref-method-select" class="w-full p-3 rounded-xl dark:bg-gray-800 border border-gray-200 dark:border-gray-700 dark:text-gray-100">
+        <select id="ref-method-select" class="w-full p-3 rounded-xl dark:bg-gray-800 border border-gray-200 ">
           <option value="">-- Pilih Referensi --</option>
           ${REFERENSI_LIST.map(ref => `<option value="${ref.method}">${ref.label}</option>`).join('')}
         </select>
       </div>
 
-      <div id="ref-params-panel" class="hidden space-y-4 p-4 rounded-xl border border-gray-200 dark:border-gray-700 dark:text-gray-100">
-        <h4 class="font-semibold text-gray-700 dark:text-gray-100">2. Opsi Parameter</h4>
+      <div id="ref-params-panel" class="hidden space-y-4 p-4 rounded-xl border border-gray-200 ">
+        <h4 class="font-semibold">2. Opsi Parameter</h4>
 
         <!-- Filter Cepat (otomatis dari field) -->
         <div>
-          <label class="block text-sm mb-1 text-gray-600 dark:text-gray-400">Filter Cepat (berdasarkan field)</label>
-          <select id="ref-filter-field" class="w-full p-2 rounded-lg bg-gray-50 border border-gray-200 dark:border-gray-600 dark:text-gray-100">
+          <label class="block text-sm mb-1">Filter Cepat (berdasarkan field)</label>
+          <select id="ref-filter-field" class="w-full p-2 rounded-lg bg-gray-50 border border-gray-200 dark:border-gray-600 ">
             <option value="">-- Pilih Field --</option>
           </select>
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label class="block text-sm mb-1 text-gray-600 dark:text-gray-400">Filter (SQL LIKE) – id_='1' </label>
-            <input type="text" id="ref-filter" class="w-full p-2 rounded-lg bg-gray-50 border border-gray-200 dark:border-gray-600 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500" placeholder="Contoh: nama LIKE '%Agus%'">
+            <label class="block text-sm mb-1">Filter (SQL LIKE) – id_='1' </label>
+            <input type="text" id="ref-filter" class="w-full p-2 rounded-lg bg-gray-50 border border-gray-200 dark:border-gray-600  placeholder-gray-400 dark:placeholder-gray-500" placeholder="Contoh: nama LIKE '%Agus%'">
           </div>
           <div>
-            <label class="block text-sm mb-1 text-gray-600 dark:text-gray-400">Order</label>
-            <input type="text" id="ref-order" class="w-full p-2 rounded-lg bg-gray-50 border border-gray-200 dark:border-gray-600 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500" placeholder="Contoh: nama ASC">
+            <label class="block text-sm mb-1">Order</label>
+            <input type="text" id="ref-order" class="w-full p-2 rounded-lg bg-gray-50 border border-gray-200 dark:border-gray-600  placeholder-gray-400 dark:placeholder-gray-500" placeholder="Contoh: nama ASC">
           </div>
           <div>
-            <label class="block text-sm mb-1 text-gray-600 dark:text-gray-400">Limit</label>
-            <select id="ref-limit" class="w-full p-2 rounded-lg bg-gray-50 border border-gray-200 dark:border-gray-600 dark:text-gray-100">
+            <label class="block text-sm mb-1">Limit</label>
+            <select id="ref-limit" class="w-full p-2 rounded-lg bg-gray-50 border border-gray-200 dark:border-gray-600 ">
               <option value="15" selected>15</option>
               <option value="30">30</option>
               <option value="60">60</option>
@@ -126,8 +126,8 @@ export async function renderReferensiView(container) {
             </select>
           </div>
           <div>
-            <label class="block text-sm mb-1 text-gray-600 dark:text-gray-400">Offset</label>
-            <input type="number" id="ref-offset" class="w-full p-2 rounded-lg bg-gray-50 border border-gray-200 dark:border-gray-600 dark:text-gray-100" value="0" min="0">
+            <label class="block text-sm mb-1">Offset</label>
+            <input type="number" id="ref-offset" class="w-full p-2 rounded-lg bg-gray-50 border border-gray-200 dark:border-gray-600 " value="0" min="0">
           </div>
         </div>
 
@@ -136,7 +136,7 @@ export async function renderReferensiView(container) {
         </button>
       </div>
 
-      <div id="ref-status" class="text-sm mb-3 text-gray-600 dark:text-gray-400"></div>
+      <div id="ref-status" class="text-sm mb-3"></div>
       <div id="ref-table-container" class="overflow-x-auto">
         <p class="text-gray-500 dark:text-gray-400">Silakan pilih salah satu referensi di atas.</p>
       </div>

@@ -4,23 +4,23 @@ import { Logger } from './logger.js';
 
 
 // log(tingkat, pesan_utama, [data_tambahan_opsional]);
-// ✅ Informasi biasa
+// Informasi biasa
 // log('info', 'Mulai memproses berkas...');
 
-// ✅ Berhasil, sertakan data ringkas
+// Berhasil, sertakan data ringkas
 // log('success', 'Data berhasil disimpan', { jumlah: 12, waktu: '2 detik' });
 
-// ✅ Peringatan
+// Peringatan
 // log('warning', 'Ada 3 baris yang dilewati karena duplikat');
 
-// ✅ Kesalahan, sertakan objek error
+// Kesalahan, sertakan objek error
 // try {
   // ... proses ...
 // } catch (err) {
 //   log('error', 'Gagal terhubung ke API', err.message);
 // }
 
-// ✅ Khusus panggilan API
+// Khusus panggilan API
 // log('api', 'Respon daftar Prodi', dataDariServer);
 
 export class LoggerUI extends Logger {
@@ -103,11 +103,11 @@ export class LoggerUI extends Logger {
   }
 }
 
-// ✅ Instansi utama yang dipakai seluruh aplikasi
+// Instansi utama yang dipakai seluruh aplikasi
 export const loggerInst = new LoggerUI();
 
-// ✅ Alias singkat agar kode lama tetap berjalan
+// Alias singkat agar kode lama tetap berjalan
 export const log = (tingkat, pesan, rincian = null) => loggerInst.log(tingkat, pesan, rincian);
 
-// ✅ Jadikan bisa diakses secara global untuk atribut onclick
+// Jadikan bisa diakses secara global untuk atribut onclick
 window.loggerInst = loggerInst;

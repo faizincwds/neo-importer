@@ -8,18 +8,18 @@ export function renderConfigView(container) {
 
   container.innerHTML = `
     <div class="glass p-6 rounded-2xl max-w-xl mx-auto">
-      <h2 class="text-2xl font-bold mb-6 text-gray-800 dark:text-gray-100">⚙️ Konfigurasi API Feeder</h2>
+      <h2 class="text-2xl font-bold mb-6">⚙️ Konfigurasi API Feeder</h2>
       
       <div class="space-y-4">
         <div>
-          <label class="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">URL API Feeder</label>
+          <label class="block text-sm font-medium mb-2">URL API Feeder</label>
           <input type="text" id="config-api-url" class="w-full p-3 rounded-xl bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-800 dark:text-gray-100" 
                  value="${savedUrl}" placeholder="http://localhost:3003">
           <p class="text-xs text-gray-500 mt-1">Kosongkan untuk menggunakan default: http://localhost:3003</p>
         </div>
         
         <div>
-          <label class="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">Type API Feeder</label>
+          <label class="block text-sm font-medium mb-2">Type API Feeder</label>
           <select id="config-api-type" class="w-full p-3 rounded-xl bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-800 dark:text-gray-100">
             <option value="live2.php" ${savedType === 'live2.php' ? 'selected' : ''}>live2.php (Live)</option>
             <option value="sandbox2.php" ${savedType === 'sandbox2.php' ? 'selected' : ''}>sandbox2.php (Sandbox)</option>
@@ -27,7 +27,7 @@ export function renderConfigView(container) {
         </div>
         
         <div>
-          <label class="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">Username (opsional, untuk login otomatis)</label>
+          <label class="block text-sm font-medium mb-2">Username (opsional, untuk login otomatis)</label>
           <input type="text" id="config-username" class="w-full p-3 rounded-xl bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-800 dark:text-gray-100" 
                  value="${savedUsername}" placeholder="Username Neo Feeder">
         </div>
