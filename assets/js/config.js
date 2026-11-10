@@ -1,6 +1,4 @@
-// export const API_BASE = 'http://localhost:3003/ws/live2.php';
-// export const API_BASE = 'http://localhost:3003/ws/sandbox2.php';
-export const DEBUG_API = false; // true untuk menampilkan log API di console
+export const DEBUG_API = true; // true untuk menampilkan log API di console
 export const API_BASE = localStorage.getItem('nf_api_url') || 'http://localhost:3003';
 export const API_TYPE = localStorage.getItem('nf_api_type') || 'live2.php';
 export const STORAGE_KEYS = {
@@ -14,10 +12,33 @@ export const STORAGE_KEYS = {
   PROFIL_PT: 'nf_profil_pt',
 };
 
+export const CACHE_PREFIX = 'nf_cache_';
+
+// TTL dalam milidetik
+export const CACHE_TTL = {
+  prodi:      30 * 60 * 1000,   // 30 menit
+  dosen:      30 * 60 * 1000,   // 30 menit
+  mahasiswa:  15 * 60 * 1000,   // 15 menit (paling sering berubah)
+  matakuliah: 60 * 60 * 1000,   // 1 jam
+  kelas:      10 * 60 * 1000,   // 10 menit
+  semester:   60 * 60 * 1000,   // 1 jam
+  agama:      24 * 60 * 60 * 1000,  // 24 jam (jarang berubah)
+  jenis_tinggal: 24 * 60 * 60 * 1000,
+  alat_transportasi: 24 * 60 * 60 * 1000,
+  jenjang_pendidikan: 24 * 60 * 60 * 1000,
+  pekerjaan:  24 * 60 * 60 * 1000,
+  penghasilan: 24 * 60 * 60 * 1000,
+  kebutuhan_khusus: 24 * 60 * 60 * 1000,
+  pembiayaan: 24 * 60 * 60 * 1000,
+  wilayah:    7 * 24 * 60 * 60 * 1000,  // 7 hari
+  kategori_kegiatan: 24 * 60 * 60 * 1000,
+  jenis_aktivitas: 24 * 60 * 60 * 1000,
+};
+
 export const IMPORT_DEFAULTS = {
   batchSize: 10, // (jumlah baris per batch)
-  delay: 100, // (jeda antar baris dalam milidetik)
-  retry: 1, // (jumlah percobaan ulang jika gagal)
+  delay: 200, // (jeda antar baris dalam milidetik)
+  retry: 2, // (jumlah percobaan ulang jika gagal)
   continueOnError: true,
   skipInvalid: true,
   timeout: 30000,

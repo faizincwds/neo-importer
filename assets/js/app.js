@@ -54,8 +54,13 @@ document.addEventListener('DOMContentLoaded', () => {
   if (savedUsername) document.getElementById('username').value = savedUsername;
   if (savedPassword) document.getElementById('password').value = savedPassword;
 
+  // ✅ Saat sesi browser baru (tab baru / browser dibuka ulang), reset log
+  if (!sessionStorage.getItem('nf_session_init')) {
+    loggerInst.clearLogs();
+    sessionStorage.setItem('nf_session_init', '1');
+  }
+
   loggerInst.init();
-  log('info', 'Aplikasi siap digunakan');
 
   if (clearLogBtn) {
     clearLogBtn.addEventListener('click', () => {
@@ -208,7 +213,7 @@ document.addEventListener('DOMContentLoaded', () => {
         checkAuth();
       } else {
         statusEl.textContent = '❌ Gagal login';
-        showToast('Login gagal. Periksa kredensial atau koneksi API.', 'error');
+        showToast('Login gagal: username atau password salah!', 'error');
       }
     } catch (err) {
       statusEl.textContent = '❌ Error: ' + err.message;

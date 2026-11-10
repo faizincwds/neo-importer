@@ -1934,12 +1934,11 @@ export function renderInsertView(container) {
           const extra = nim ? ` (NIM: ${nim})` : '';
           
           let info = `[${mk}] ${nama} | ${kelas} ${aksi} | Ket: ${status}`;
-          if (info.length > 155) info = info.substring(0, 150) + '...';
+          if (info.length > 300) info = info.substring(0, 310) + '...';
           
           let detail = '';
           if (log.type === 'failed') {
             detail = `<br><small class="text-gray-400">Payload: ${JSON.stringify(disp)}</small>`;
-            loggerInst.log('error', 'Data Gagal diimport', { detail });
           }
            return `<div class="py-1">${icon} ${info} ${detail}</div>`;
         }).join('');

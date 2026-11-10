@@ -1,4 +1,4 @@
-import { API_BASE, STORAGE_KEYS, DEBUG_API } from './config.js';
+import { API_BASE, STORAGE_KEYS, DEBUG_API, CACHE_PREFIX, CACHE_TTL } from './config.js';
 import { loggerInst } from './loggerView.js';
 
 export class NeoFeederAPI {
@@ -22,32 +22,28 @@ export class NeoFeederAPI {
       ...params,
     };
 
-    const debugPayload = {
-      ...payload,
-      token: payload.token
-        ? `${payload.token.slice(0, 10)}...`
-        : undefined
-    };
+
+    // ✅ Hanya log untuk operasi tulis, agar panel Aktivitas Terakhir tidak dibanjiri Get*
+    const isWrite = /^(Insert|Update|Delete|Set)/.test(method);
 
     if (DEBUG_API) {
-      console.log(`[Debug API] Request ${method}`, {
-        ...params
-      });
+      console.log(`[Debug API] Request ${method}`, { ...params });
+      console.log(`[API Request] ${method}`, { url, ...params});
     }
 
-    console.log(`[API Request] ${method}`, { url, ...params});
-
-    loggerInst.log('api', `Mengirim permintaan: ${method}`, {
-      url,
-      method,
-      params
-    });
+    if (isWrite) {
+      loggerInst.log('api', `Mengirim permintaan: ${method}`, {
+        url,
+        method,
+        params
+      });
+    }
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 30000);
 
     try {
-      const response = await fetch(url, { 
+      const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -60,7 +56,7 @@ export class NeoFeederAPI {
         const errorText = await response.text();
         // Catat error HTTP
         loggerInst.log('error', `Gagal terhubung API: HTTP ${response.status}`, { status: response.status, respon: errorText });
-        console.error(`[API ERROR] HTTP ${response.status}`, errorText);
+        if (DEBUG_API) console.error(`[API ERROR] HTTP ${response.status}`, errorText);
         throw new Error(`HTTP ${response.status} - ${response.statusText}`);
       }
 
@@ -68,7 +64,7 @@ export class NeoFeederAPI {
       if (!text) {
         // Catat respon kosong
         loggerInst.log('warning', `Respon kosong dari server untuk ${method}`);
-        console.error(`[API ERROR] Empty response for ${method}`);
+        if (DEBUG_API) console.error(`[API ERROR] Empty response for ${method}`);
         throw new Error('Server mengembalikan respons kosong');
       }
 
@@ -78,7 +74,7 @@ export class NeoFeederAPI {
       } catch (e) {
         // Catat kesalahan format JSON
         loggerInst.log('error', `Respon bukan JSON untuk ${method}`, { respon: text.substring(0, 200) });
-        console.error(`[API ERROR] Respons bukan JSON: ${text.substring(0, 100)}`);
+        if (DEBUG_API) console.error(`[API ERROR] Respons bukan JSON: ${text.substring(0, 100)}`);
         throw new Error('Respons server bukan JSON yang valid');
       }
 
@@ -90,26 +86,91 @@ export class NeoFeederAPI {
       }
 
       // Catat keberhasilan
+            // Catat respons mentah untuk debug
       if (DEBUG_API) {
-          console.log('[API Response]', `Berhasil memproses: ${method}`, { response: this.ringkasData(json) });
+        console.log('[API Response]', `Mendapat respons: ${method}`, { response: this.ringkasData(json) });
       }
 
-      loggerInst.log('success', `Berhasil memproses: ${method}`, { ringkasan: this.ringkasData(json) });
-      
+      // ============================================================
+      // ✅ Cek error_code di level API (Neo Feeder mengembalikan
+      //    HTTP 200 tapi bisa mengandung error_code != 0)
+      // ============================================================
+      const hasApiError = json.error_code !== undefined && json.error_code !== 0;
+
+      if (hasApiError) {
+        if (isWrite) {
+          let actionText = 'diimport';
+          if (method.startsWith('Update')) actionText = 'diupdate';
+          else if (method.startsWith('Delete')) actionText = 'dihapus';
+
+          loggerInst.log(
+            'warning',
+            `[Gagal Import] Ket: ${json.error_desc || 'Tidak ada keterangan'}`,
+            {
+              method,
+              error_code: json.error_code,
+              error_desc: json.error_desc || 'Tidak ada keterangan'
+            }
+          );
+        } else {
+          loggerInst.log(
+            'error',
+            `[Gagal] Kesalahan pada ${method}: [${json.error_code}] ${json.error_desc || 'Tidak ada keterangan'}`,
+            {
+              method,
+              error_code: json.error_code,
+              error_desc: json.error_desc || 'Tidak ada keterangan'
+            }
+          );
+        }
+        // Jangan return — biarkan callSafe yang melempar error
+        return json;
+      }
+
+      // ============================================================
+      // ✅ Sukses: error_code = 0 atau tidak ada error_code
+      // ============================================================
+      if (isWrite) {
+        let actionText = 'diimport';
+        if (method.startsWith('Update')) actionText = 'diupdate';
+        else if (method.startsWith('Delete')) actionText = 'dihapus';
+
+        loggerInst.log(`success`, `[Success] Data berhasil ${actionText} (${method})`, {
+          method,
+          ringkasan: this.ringkasData(json)
+        });
+      }
+
       return json;
 
     } catch (error) {
+
       clearTimeout(timeoutId);
       if (error.name === 'AbortError') {
         // Catat timeout
         loggerInst.log('error', `Permintaan dibatalkan: Timeout 30 detik untuk ${method}`);
-        console.error(`[API] Timeout untuk ${method}`);
+        if (DEBUG_API) console.error(`[API] Timeout untuk ${method}`);
         throw new Error(`Timeout setelah 30 detik untuk ${method}`);
       }
+
+      // Deteksi error jaringan (server mati / port salah / API tidak aktif)
+      const isNetworkError =
+        error.name === 'TypeError' &&
+        (error.message.includes('Failed to fetch') ||
+        error.message.includes('NetworkError') ||
+        error.message.includes('fetch'));
+
+      if (isNetworkError) {
+        loggerInst.log('error', `Server Off / Maintenance – tidak dapat terhubung ke ${url}`, { url });
+        if (DEBUG_API) console.warn(`[API] Server Off: ${url}`);
+      }
+
       // Catat kesalahan umum
       loggerInst.log('error', `Kesalahan pada ${method}: ${error.message}`);
-      console.error(`[API] ${method} failed:`, error.message);
+      if (DEBUG_API) console.error(`[API] ${method} failed:`, error.message);
+
       throw error;
+
     }
   }
 
@@ -138,7 +199,7 @@ export class NeoFeederAPI {
       throw new Error('Respons tidak valid (tidak ada error_code)');
     }
     if (res.error_code !== 0) {
-      loggerInst.log('error', `Kesalahan API ${method}: [${res.error_code}] ${res.error_desc || 'Tidak ada keterangan'}`);
+      if (DEBUG_API) console.log('[Debug API]', `Kesalahan API ${method}: [${res.error_code}] ${res.error_desc || 'Tidak ada keterangan'}`);
       throw new Error(`[${res.error_code}] ${res.error_desc || 'Unknown error'}`);
     }
     return res;
@@ -150,23 +211,23 @@ export class NeoFeederAPI {
    */
   extractData(response) {
     if (!response) return null;
-      // Jika response memiliki properti 'data'
-        if (response.data !== undefined) {
-            // Neo Feeder sering membungkus lagi: { data: { data: [...] } }
-            if (typeof response.data === 'object' && !Array.isArray(response.data) && response.data.data !== undefined) {
-              return response.data.data;
-            }
-            
-          return response.data;
-        }
-      if (response.result !== undefined) return response.result;
-      if (Array.isArray(response)) return response;
-      return response;
+    if (response.data !== undefined) {
+      if (typeof response.data === 'object' && !Array.isArray(response.data) && response.data.data !== undefined) {
+        return response.data.data;
+      }
+      return response.data;
+    }
+    if (response.result !== undefined) return response.result;
+    if (Array.isArray(response)) return response;
+    return response;
   }
 
   // Auth
   async getToken(username, password) {
     const res = await this.call('GetToken', { username, password });
+
+    if (!res) throw new Error('Respons kosong dari server');
+
     const data = this.extractData(res);
     if (data && data.token) {
       this.setToken(data.token);
@@ -180,22 +241,140 @@ export class NeoFeederAPI {
     throw new Error('Token tidak ditemukan dalam respons');
   }
 
+  // ============ CACHE HELPER ============
+
+  _getCache(key) {
+    try {
+      const raw = localStorage.getItem(`${CACHE_PREFIX}${key}`);
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) { return null; }
+  }
+
+  _setCache(key, data, count) {
+    try {
+      localStorage.setItem(`${CACHE_PREFIX}${key}`, JSON.stringify({
+        data,
+        count,
+        timestamp: Date.now()
+      }));
+    } catch (e) {
+      console.warn('Cache save failed (quota?), skip', e);
+    }
+  }
+
+  invalidateCache(key) {
+    localStorage.removeItem(`${CACHE_PREFIX}${key}`);
+  }
+
+  invalidateAllCache() {
+    Object.keys(localStorage)
+      .filter(k => k.startsWith(CACHE_PREFIX))
+      .forEach(k => localStorage.removeItem(k));
+  }
+
+  /**
+   * Ambil data dengan cache + TTL + count-check.
+   */
+  async _cachedFetch(key, fetchFn, ttl, countFn = null) {
+    const cached = this._getCache(key);
+    const now = Date.now();
+
+    if (cached && (now - cached.timestamp) < ttl) {
+      if (countFn) {
+        try {
+          const currentCount = await countFn();
+          if (currentCount !== null && currentCount === cached.count) {
+            if (DEBUG_API) console.log(`[CACHE HIT] ${key} (${currentCount} item)`);
+            return cached.data;
+          }
+          if (DEBUG_API) console.log(`[CACHE STALE] ${key} count berubah ${cached.count} → ${currentCount}`);
+        } catch (e) {
+          if (DEBUG_API) console.log(`[CACHE HIT–fallback] ${key}`);
+          return cached.data;
+        }
+      } else {
+        if (DEBUG_API) console.log(`[CACHE HIT] ${key}`);
+        return cached.data;
+      }
+    }
+
+    if (DEBUG_API) console.log(`[CACHE MISS] ${key}, fetch baru`);
+    const data = await fetchFn();
+    let count = null;
+    if (countFn) {
+      try { count = await countFn(); } catch (e) { /* ignore */ }
+    }
+    this._setCache(key, data, count);
+    return data;
+  }
+
+  // Helper count – panggil GetCount* dan kembalikan angka
+  async _count(method) {
+    try {
+      const res = await this.call(method, { limit: 1 });
+
+      // 🔎 Debug: lihat struktur respons mentah
+      if (DEBUG_API) console.log(`[COUNT] ${method} raw:`, res);
+
+      // Coba semua kemungkinan lokasi angka jumlah
+      const candidates = [
+        res?.jumlah,
+        res?.jumlah_data,
+        res?.count,
+        res?.total,
+        res?.data?.jumlah,
+        res?.data?.jumlah_data,
+        res?.data?.count,
+        res?.data?.total,
+        res?.data,
+        typeof res?.data === 'number' ? res.data : undefined,
+        Array.isArray(res?.data) ? res.data.length : undefined,
+      ];
+
+      for (const c of candidates) {
+        if (c !== undefined && c !== null && c !== '') {
+          const n = parseInt(c, 10);
+          if (!isNaN(n)) return n;
+        }
+      }
+
+      // Fallback ekstraksi umum
+      const d = this.extractData(res);
+      if (typeof d === 'number') return d;
+      if (Array.isArray(d)) return d.length;
+
+      if (DEBUG_API) console.warn(`[COUNT] ${method} – tidak dapat mengekstrak jumlah dari:`, res);
+      return 0;
+    } catch (e) {
+      if (DEBUG_API) console.warn(`[COUNT] ${method} – error:`, e);
+      return null;
+    }
+  }
+
+
+
   async getDictionary(fungsi = null) {
     const params = {};
     if (fungsi) params.fungsi = fungsi;
     const res = await this.call('GetDictionary', params);
     return this.extractData(res);
   }
-  
+
 // REFERENCE
   async getProfilPT() {
     const res = await this.call('GetProfilPT');
     return this.extractData(res);
   }
 
-  async getProdi() {
-    const res = await this.call('GetProdi');
-    return this.extractData(res);
+  // ✅ Cache: prodi
+  async getProdi(force = false) {
+    if (force) this.invalidateCache('prodi');
+    return this._cachedFetch(
+      'prodi',
+      async () => this.extractData(await this.call('GetProdi')),
+      CACHE_TTL.prodi,
+      () => this._count('GetCountProdi')
+    );
   }
 
   async getPeriode() {
@@ -203,19 +382,22 @@ export class NeoFeederAPI {
     return this.extractData(res);
   }
 
-  async getSemester() {
-    const res = await this.call('GetSemester');
-    return this.extractData(res);
+  // ✅ Cache: semester
+  async getSemester(force = false) {
+    if (force) this.invalidateCache('semester');
+    return this._cachedFetch(
+      'semester',
+      async () => this.extractData(await this.call('GetSemester')),
+      CACHE_TTL.semester
+    );
   }
 
   async getDetailMataKuliah(kode_mk) {
-    // Coba kirim sebagai parameter langsung
     const res = await this.call('GetDetailMataKuliah', {
       filter: `kode_mata_kuliah = '${kode_mk}'`,
       limit: 1
     });
     const data = this.extractData(res);
-    // Jika hasilnya array, ambil elemen pertama
     if (Array.isArray(data) && data.length > 0) return data[0];
     if (data && !Array.isArray(data)) return data;
     return null;
@@ -242,19 +424,37 @@ export class NeoFeederAPI {
     return this.extractData(res);
   }
 
-  async getListDosen() {
-    const res = await this.call('GetListDosen');
-    return this.extractData(res);
+  // ✅ Cache: dosen
+  async getListDosen(force = false) {
+    if (force) this.invalidateCache('dosen');
+    return this._cachedFetch(
+      'dosen',
+      async () => this.extractData(await this.call('GetListDosen')),
+      CACHE_TTL.dosen,
+      () => this._count('GetCountDosen')
+    );
   }
 
-  async getListMataKuliah() {
-    const res = await this.call('GetListMataKuliah');
-    return this.extractData(res);
+  // ✅ Cache: matakuliah
+  async getListMataKuliah(force = false) {
+    if (force) this.invalidateCache('matakuliah');
+    return this._cachedFetch(
+      'matakuliah',
+      async () => this.extractData(await this.call('GetListMataKuliah')),
+      CACHE_TTL.matakuliah,
+      () => this._count('GetCountMataKuliah')
+    );
   }
 
-  async getListMahasiswa() {
-    const res = await this.call('GetListMahasiswa');
-    return this.extractData(res);
+  // ✅ Cache: mahasiswa
+  async getListMahasiswa(force = false) {
+    if (force) this.invalidateCache('mahasiswa');
+    return this._cachedFetch(
+      'mahasiswa',
+      async () => this.extractData(await this.call('GetListMahasiswa')),
+      CACHE_TTL.mahasiswa,
+      () => this._count('GetCountMahasiswa')
+    );
   }
 
   async getListKelasKuliah(filter = {}) {
@@ -266,7 +466,7 @@ export class NeoFeederAPI {
     const res = await this.call('GetListKelasKuliah', { filter: filterStr, limit: 1 });
     return this.extractData(res);
   }
-  
+
   async getListPesertaKelasKuliah(filter = {}) {
     const conditions = [];
     if (filter.id_kelas_kuliah) conditions.push(`id_kelas_kuliah = '${filter.id_kelas_kuliah}'`);
@@ -331,23 +531,81 @@ export class NeoFeederAPI {
     return this.extractData(res);
   }
 
-    // Generic method untuk referensi yang hanya butuh act
-  async getAgama() { const res = await this.call('GetAgama'); return this.extractData(res); }
-  async getJenisTinggal() { const res = await this.call('GetJenisTinggal'); return this.extractData(res); }
-  async getAlatTransportasi() { const res = await this.call('GetAlatTransportasi'); return this.extractData(res); }
+  // ✅ Cache: referensi statis (jarang berubah)
+  async getAgama() {
+    return this._cachedFetch('agama',
+      async () => this.extractData(await this.call('GetAgama')),
+      CACHE_TTL.agama);
+  }
+
+  async getJenisTinggal() {
+    return this._cachedFetch('jenis_tinggal',
+      async () => this.extractData(await this.call('GetJenisTinggal')),
+      CACHE_TTL.jenis_tinggal);
+  }
+
+  async getAlatTransportasi() {
+    return this._cachedFetch('alat_transportasi',
+      async () => this.extractData(await this.call('GetAlatTransportasi')),
+      CACHE_TTL.alat_transportasi);
+  }
+
   async GetLevelWilayah() { const res = await this.call('GetLevelWilayah'); return this.extractData(res); }
-  async getJenjangPendidikan() { const res = await this.call('GetJenjangPendidikan'); return this.extractData(res); }
-  async getPekerjaan() { const res = await this.call('GetPekerjaan'); return this.extractData(res); }
-  async getPenghasilan() { const res = await this.call('GetPenghasilan'); return this.extractData(res); }
-  async getKebutuhanKhusus() { const res = await this.call('GetKebutuhanKhusus'); return this.extractData(res); }
-  async getPembiayaan() { const res = await this.call('GetPembiayaan'); return this.extractData(res); }
-  async getKategoriKegiatan() { const res = await this.call('GetKategoriKegiatan'); return this.extractData(res); }
-  async getJenisAktivitasMahasiswa() { const res = await this.call('GetJenisAktivitasMahasiswa'); return this.extractData(res); }
+
+  async getJenjangPendidikan() {
+    return this._cachedFetch('jenjang_pendidikan',
+      async () => this.extractData(await this.call('GetJenjangPendidikan')),
+      CACHE_TTL.jenjang_pendidikan);
+  }
+
+  async getPekerjaan() {
+    return this._cachedFetch('pekerjaan',
+      async () => this.extractData(await this.call('GetPekerjaan')),
+      CACHE_TTL.pekerjaan);
+  }
+
+  async getPenghasilan() {
+    return this._cachedFetch('penghasilan',
+      async () => this.extractData(await this.call('GetPenghasilan')),
+      CACHE_TTL.penghasilan);
+  }
+
+  async getKebutuhanKhusus() {
+    return this._cachedFetch('kebutuhan_khusus',
+      async () => this.extractData(await this.call('GetKebutuhanKhusus')),
+      CACHE_TTL.kebutuhan_khusus);
+  }
+
+  async getPembiayaan() {
+    return this._cachedFetch('pembiayaan',
+      async () => this.extractData(await this.call('GetPembiayaan')),
+      CACHE_TTL.pembiayaan);
+  }
+
+  async getKategoriKegiatan() {
+    return this._cachedFetch('kategori_kegiatan',
+      async () => this.extractData(await this.call('GetKategoriKegiatan')),
+      CACHE_TTL.kategori_kegiatan);
+  }
+
+  async getJenisAktivitasMahasiswa() {
+    return this._cachedFetch('jenis_aktivitas',
+      async () => this.extractData(await this.call('GetJenisAktivitasMahasiswa')),
+      CACHE_TTL.jenis_aktivitas);
+  }
+
   async getWilayah(level = null) {
-    let filterStr = '';
-    if (level) filterStr = `id_level_wilayah = ${level}`;
-    const res = await this.call('GetWilayah', { filter: filterStr });
-    return this.extractData(res);
+    const key = level ? `wilayah_${level}` : 'wilayah';
+    return this._cachedFetch(
+      key,
+      async () => {
+        let filterStr = '';
+        if (level) filterStr = `id_level_wilayah = ${level}`;
+        const res = await this.call('GetWilayah', { filter: filterStr });
+        return this.extractData(res);
+      },
+      CACHE_TTL.wilayah
+    );
   }
 
   // END REFERENCE
@@ -430,21 +688,17 @@ export class NeoFeederAPI {
     let id_mahasiswa;
     let biodataBaru = false;
 
-    // 1. Coba insert biodata
     try {
       loggerInst.log('info', '🔵 Mencoba insert biodata...');
 
       const biodataResult = await this.insertBiodataMahasiswa(payload.biodata);
 
-      // Cek tipe hasil
-      if (typeof biodataResult === 'string' && biodataResult .length === 36) {
-          id_mahasiswa = biodataResult ;
+      if (typeof biodataResult === 'string' && biodataResult.length === 36) {
+          id_mahasiswa = biodataResult;
           biodataBaru = true;
-
       } else if (biodataResult && biodataResult.skipped) {
           loggerInst.log('error', 'Biodata sudah ada, menggunakan id_mahasiswa yang ada');
           id_mahasiswa = biodataResult.id_mahasiswa;
-
       } else {
           throw new Error('Gagal mendapatkan id_mahasiswa dari respons insert biodata');
       }
@@ -468,12 +722,11 @@ export class NeoFeederAPI {
         loggerInst.log('success', '✅ Mahasiswa ditemukan (existing), id_mahasiswa:', id_mahasiswa);
       }
 
-    // 2. Cek apakah riwayat sudah ada (hanya jika mahasiswa sudah ada sebelumnya)
     if (!biodataBaru) {
       const riwayatAda = await this.cekRiwayatMahasiswa(id_mahasiswa);
       loggerInst.log('info', '🔍 Cek riwayat mahasiswa:', riwayatAda ? 'sudah ada' : 'belum ada');
       if (riwayatAda) {
-        console.log('⏭️ Riwayat sudah ada, tidak perlu insert lagi');
+        if (DEBUG_API) console.log('⏭️ Riwayat sudah ada, tidak perlu insert lagi');
         loggerInst.log('info', 'Riwayat sudah ada, tidak perlu insert', { id_mahasiswa });
         return {
           skipped: true,
@@ -484,12 +737,12 @@ export class NeoFeederAPI {
       }
     }
 
-    // 3. Insert riwayat
     const riwayat = { ...payload.riwayat, id_mahasiswa };
     try {
       loggerInst.log('info', '🔵 Mencoba insert riwayat...');
       const result = await this.insertRiwayatPendidikanMahasiswa(riwayat);
       loggerInst.log('info', '✅ Insert riwayat berhasil', { message: result });
+      this.invalidateCache('mahasiswa');   // ✅ invalidate
       return result;
     } catch (err) {
       loggerInst.log('error', '❌ Insert riwayat gagal:', err.message);
@@ -520,10 +773,10 @@ export class NeoFeederAPI {
         throw new Error('Gagal mendapatkan id_mahasiswa dari pencarian NIK');
       }
 
+      this.invalidateCache('mahasiswa');   // ✅ invalidate
       return { error_code: 0, error_desc: 'Biodata berhasil disimpan', id_mahasiswa };
 
     } catch (err) {
-      // Cari mahasiswa yang sudah ada
       const existing = await this.cariMahasiswaLengkap({
         nik: record.nik,
         email: record.email,
@@ -554,32 +807,40 @@ export class NeoFeederAPI {
         _display: record._display || { nim: record.nim, nama: record.nama_mahasiswa }
       };
     }
-    return this.callSafe('InsertRiwayatPendidikanMahasiswa', { record: cleanRecord });
+    const result = await this.callSafe('InsertRiwayatPendidikanMahasiswa', { record: cleanRecord });
+    this.invalidateCache('mahasiswa');   // ✅ invalidate
+    return result;
   }
 
   async insertKelasKuliah(record) {
     const { _display, ...cleanRecord } = record;
-    return this.callSafe('InsertKelasKuliah', { record: cleanRecord });
+    const result = await this.callSafe('InsertKelasKuliah', { record: cleanRecord });
+    this.invalidateCache('kelas');   // ✅ invalidate
+    return result;
   }
 
   async insertDosenPengajarKelasKuliah(record) {
-    const { _display, ...cleanRecord } = record; 
-    return this.callSafe('InsertDosenPengajarKelasKuliah', { record: cleanRecord });
+    const { _display, ...cleanRecord } = record;
+    const result = await this.callSafe('InsertDosenPengajarKelasKuliah', { record: cleanRecord });
+    this.invalidateCache('dosen');   // ✅ invalidate
+    return result;
   }
 
   async insertPesertaKelasKuliah(record) {
-    const { _display, ...cleanRecord } = record; 
-    return this.callSafe('InsertPesertaKelasKuliah', { record: cleanRecord });
+    const { _display, ...cleanRecord } = record;
+    const result = await this.callSafe('InsertPesertaKelasKuliah', { record: cleanRecord });
+    this.invalidateCache('mahasiswa');   // ✅ invalidate
+    return result;
   }
-  
+
 
   async insertKomponenEvaluasiKelas(record) {
-    const { _display, ...cleanRecord } = record; 
+    const { _display, ...cleanRecord } = record;
     return this.callSafe('InsertKomponenEvaluasiKelas', { record: cleanRecord });
   }
 
   async insertRencanaEvaluasi(record) {
-    const { _display, ...cleanRecord } = record; 
+    const { _display, ...cleanRecord } = record;
     return this.callSafe('InsertRencanaEvaluasi', { record: cleanRecord });
   }
 
@@ -626,7 +887,6 @@ export class NeoFeederAPI {
     let id_aktivitas;
     let aktivitasSkipped = false;
 
-    // 1. Cari aktivitas existing
     const existingAktivitas = await this.cariAktivitasExisting(
       aktivitas.judul,
       aktivitas.id_prodi,
@@ -636,14 +896,12 @@ export class NeoFeederAPI {
     if (existingAktivitas?.id_aktivitas) {
       id_aktivitas = existingAktivitas.id_aktivitas;
       aktivitasSkipped = true;
-      console.log('⏭️ Aktivitas sudah ada, gunakan id_aktivitas:', id_aktivitas);
+      if (DEBUG_API) console.log('⏭️ Aktivitas sudah ada, gunakan id_aktivitas:', id_aktivitas);
     } else {
-      // Insert aktivitas baru
       try {
         id_aktivitas = await this.insertAktivitasMahasiswa(aktivitas);
-        console.log('✅ Aktivitas baru disimpan, id_aktivitas:', id_aktivitas);
+        if (DEBUG_API) console.log('✅ Aktivitas baru disimpan, id_aktivitas:', id_aktivitas);
       } catch (err) {
-        // Jika insert gagal, coba cari ulang (mungkin duplikat terdeteksi server)
         const fallback = await this.cariAktivitasExisting(
           aktivitas.judul,
           aktivitas.id_prodi,
@@ -652,21 +910,19 @@ export class NeoFeederAPI {
         if (fallback?.id_aktivitas) {
           id_aktivitas = fallback.id_aktivitas;
           aktivitasSkipped = true;
-          console.log('⚠️ Insert aktivitas gagal, ditemukan yang sudah ada:', id_aktivitas);
+          if (DEBUG_API) console.log('⚠️ Insert aktivitas gagal, ditemukan yang sudah ada:', id_aktivitas);
         } else {
           throw new Error(`Insert aktivitas gagal dan tidak ditemukan existing. Error: ${err.message}`);
         }
       }
     }
 
-    // 2. Cek apakah anggota sudah terdaftar
     const existingAnggota = await this.cariAnggotaExisting(
       id_aktivitas,
       anggota.id_registrasi_mahasiswa
     );
 
     if (existingAnggota) {
-      // Anggota sudah ada → lewati
       return {
         skipped: true,
         message: 'Anggota aktivitas sudah ada',
@@ -675,14 +931,12 @@ export class NeoFeederAPI {
       };
     }
 
-    // 3. Insert anggota baru
     try {
       await this.insertAnggotaAktivitasMahasiswa({
         ...anggota,
         id_aktivitas
       });
     } catch (err) {
-      // Jika gagal karena duplikat, cek lagi
       const existingAfterFail = await this.cariAnggotaExisting(
         id_aktivitas,
         anggota.id_registrasi_mahasiswa
@@ -698,7 +952,6 @@ export class NeoFeederAPI {
       throw new Error(`Insert anggota gagal: ${err.message}. id_aktivitas: ${id_aktivitas}`);
     }
 
-    // Sukses penuh
     return {
       error_code: 0,
       error_desc: 'Aktivitas & anggota berhasil disimpan',
@@ -710,13 +963,12 @@ export class NeoFeederAPI {
   async insertAktivitasMahasiswa(record) {
     const { _display, ...cleanRecord } = record;
     const res = await this.callSafe('InsertAktivitasMahasiswa', { record: cleanRecord });
-    // Ambil id_aktivitas dari respons
     const data = this.extractData(res);
     if (data && data.id_aktivitas) return data.id_aktivitas;
     if (res.data && typeof res.data === 'string') return res.data;
     throw new Error('Gagal mendapatkan id_aktivitas setelah insert');
-    console.log('ID AK:', data.id_aktivitas);
-    
+    if (DEBUG_API) console.log('ID AK:', data.id_aktivitas);
+
     if (res.data && typeof res.data === 'string') return res.data;
     throw new Error('Gagal mendapatkan id_aktivitas setelah insert');
   }
@@ -766,18 +1018,6 @@ export class NeoFeederAPI {
     return this.callSafe('InsertUjiMahasiswa', { record: cleanRecord });
   }
 
-  // Insert Bimbing Mahasiswa
-  // async insertBimbingMahasiswa(record) {
-  //   const { _display, ...cleanRecord } = record;
-  //   return this.callSafe('InsertBimbingMahasiswa', { record: cleanRecord });
-  // }
-
-  // Insert Uji Mahasiswa
-  // async insertUjiMahasiswa(record) {
-  //   const { _display, ...cleanRecord } = record;
-  //   return this.callSafe('InsertUjiMahasiswa', { record: cleanRecord });
-  // }
-
   // UPDATE
   async updateKomponenEvaluasiKelas(payload) {
     return this.callSafe('UpdateKomponenEvaluasiKelas', {
@@ -804,36 +1044,42 @@ export class NeoFeederAPI {
   async deleteRencanaPembelajaran(id_rencana_ajar) {
     return this.callSafe('DeleteRencanaPembelajaran', { id_rencana_ajar });
   }
-  
+
   async deleteRencanaEvaluasi(id_rencana_evaluasi) {
-    return this.callSafe('DeleteRencanaEvaluasi', { 
+    return this.callSafe('DeleteRencanaEvaluasi', {
       key: id_rencana_evaluasi
     });
   }
 
   async deleteKelasKuliah(payload) {
-    return this.callSafe('DeleteKelasKuliah', { 
-      key: { 
-        id_kelas_kuliah: payload.id_kelas_kuliah 
-      } 
+    const result = await this.callSafe('DeleteKelasKuliah', {
+      key: {
+        id_kelas_kuliah: payload.id_kelas_kuliah
+      }
     });
+    this.invalidateCache('kelas');   // ✅ invalidate
+    return result;
   }
 
   async deleteDosenPengajarKelasKuliah(payload) {
-    return this.callSafe('DeleteDosenPengajarKelasKuliah', { 
-      key: { 
-        id_aktivitas_mengajar: payload.id_aktivitas_mengajar 
-      } 
+    const result = await this.callSafe('DeleteDosenPengajarKelasKuliah', {
+      key: {
+        id_aktivitas_mengajar: payload.id_aktivitas_mengajar
+      }
     });
+    this.invalidateCache('dosen');   // ✅ invalidate
+    return result;
   }
 
   async deletePesertaKelasKuliah(payload) {
-    return this.callSafe('DeletePesertaKelasKuliah', {
+    const result = await this.callSafe('DeletePesertaKelasKuliah', {
       key: {
         id_kelas_kuliah: payload.id_kelas_kuliah,
         id_registrasi_mahasiswa: payload.id_registrasi_mahasiswa
       }
     });
+    this.invalidateCache('mahasiswa');   // ✅ invalidate
+    return result;
   }
 
   //Tidak bisa Hapus Komponen Evaluasi di Kelas (hanya bisa UPDATE)

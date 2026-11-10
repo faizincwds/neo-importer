@@ -1,5 +1,5 @@
 import { NeoFeederAPI } from './api.js';
-import { STORAGE_KEYS } from './config.js';
+import { STORAGE_KEYS, DEBUG_API } from './config.js';
 import { showToast } from './utils.js';
 
 export async function handleLogin(apiUrl, apiType, username, password) {
@@ -10,7 +10,7 @@ export async function handleLogin(apiUrl, apiType, username, password) {
   const api = new NeoFeederAPI();
   try {
     const tokenData = await api.getToken(username, password);
-    console.log('Token response:', tokenData);
+    if (DEBUG_API)console.log('Token response:', tokenData);
 
     if (!api.token) {
       throw new Error('Token tidak ditemukan');
@@ -23,8 +23,9 @@ export async function handleLogin(apiUrl, apiType, username, password) {
     return true;
     
   } catch (err) {
-    console.error('Login error:', err);
-    showToast('Login gagal: ' + err.message, 'error');
+    if (DEBUG_API) console.error('Login error:', err);
+
+    showToast(err.message, 'error');
     return false;
   }
 }
