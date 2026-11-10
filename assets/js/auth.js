@@ -1,6 +1,7 @@
 import { NeoFeederAPI } from './api.js';
 import { STORAGE_KEYS, DEBUG_API } from './config.js';
 import { showToast } from './utils.js';
+import { clearAllCache } from './cleanup.js';
 
 export async function handleLogin(apiUrl, apiType, username, password) {
   // Simpan konfigurasi API
@@ -35,7 +36,12 @@ export function isLoggedIn() {
 }
 
 export function logout() {
+  //  1. Hapus kredensial
   localStorage.removeItem(STORAGE_KEYS.TOKEN);
   localStorage.removeItem(STORAGE_KEYS.USER);
   localStorage.removeItem(STORAGE_KEYS.PROFIL_PT);
+
+  // 2. Hapus seluruh cache referensi
+  clearAllCache();
+
 }

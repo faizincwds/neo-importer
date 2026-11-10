@@ -2,10 +2,21 @@ import { isLoggedIn, handleLogin, logout } from './auth.js';
 import { initViewManager } from './viewManager.js';
 import { showToast } from './utils.js';
 import { STORAGE_KEYS } from './config.js';
+import { startAutoCleanup } from './cleanup.js';
+import { runCleanup } from './cleanup.js';
 
 import { log, loggerInst } from './loggerView.js';
 
 document.addEventListener('DOMContentLoaded', () => {
+
+  // ✅ Mulai auto-cleanup setiap jam
+  startAutoCleanup();
+
+  document.getElementById('cleanup-now-btn')?.addEventListener('click', () => {
+    runCleanup(true);
+    showToast('Cache & log lama dibersihkan', 'success');
+    location.reload();
+  });
 
   const clearLogBtn = document.getElementById('clear-log-btn');
   const mainContent = document.getElementById('main-content');
@@ -17,7 +28,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnText = document.getElementById('btn-text');
   const btnLoader = document.getElementById('btn-loader');
   const savedUsername = localStorage.getItem('nf_username');
-  const savedPassword = localStorage.getItem('nf_password');
 
   // ---- Toggle Panel Log ----
   const logWrapper = document.getElementById('activity-log-wrapper');
@@ -52,7 +62,6 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   if (savedUsername) document.getElementById('username').value = savedUsername;
-  if (savedPassword) document.getElementById('password').value = savedPassword;
 
   // ✅ Saat sesi browser baru (tab baru / browser dibuka ulang), reset log
   if (!sessionStorage.getItem('nf_session_init')) {

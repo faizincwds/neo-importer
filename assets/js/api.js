@@ -243,10 +243,21 @@ export class NeoFeederAPI {
 
   // ============ CACHE HELPER ============
 
+  // _getCache(key) {
+  //   try {
+  //     const raw = localStorage.getItem(`${CACHE_PREFIX}${key}`);
+  //     return raw ? JSON.parse(raw) : null;
+  //   } catch (e) { return null; }
+  // }
   _getCache(key) {
     try {
       const raw = localStorage.getItem(`${CACHE_PREFIX}${key}`);
-      return raw ? JSON.parse(raw) : null;
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      // Perbarui timestamp saat diakses
+      parsed.timestamp = Date.now();
+      localStorage.setItem(`${CACHE_PREFIX}${key}`, JSON.stringify(parsed));
+      return parsed;
     } catch (e) { return null; }
   }
 
