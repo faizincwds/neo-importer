@@ -5,7 +5,18 @@ import { NeoFeederAPI } from './api.js';
 import { GridEditor } from './gridEditor.js';
 import { ImportProcess } from './importProcess.js';
 import { sanitizeText, showToast } from './utils.js';
-import { loggerInst } from './loggerView.js';
+
+// ============================================================
+// KONFIGURASI CONCURRENCY UNTUK AUTO LOOKUP
+// ============================================================
+// Jumlah request lookup paralel per batch.
+// - 5  : aman untuk sebagian besar server Neo Feeder
+// - 8  : lebih cepat, gunakan jika server sanggup
+// - 3  : pakai jika server sering [429]/[500]
+const LOOKUP_CONCURRENCY = 5;
+
+// Ukuran chunk untuk setiap "batch" lookup (hanya untuk progress reporting)
+const LOOKUP_BATCH_SIZE = 50;
 
 const METHOD_GROUPS = {
   'Kelas Kuliah (KRS)': [
@@ -1646,23 +1657,63 @@ export function renderInsertView(container) {
         </div>
         <div id="mapping-status" class="mt-4 text-sm"></div>
         <button id="run-lookup" class="mt-4 px-6 py-2 bg-green-600 text-white rounded-xl hidden">Jalankan Ulang Lookup</button>
+
+        <!-- Overlay loading saat proses upload/lookup -->
+        <div id="wizard-loading-overlay"
+            class="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm
+                    flex flex-col items-center justify-center hidden">
+          <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl p-8
+                      flex flex-col items-center gap-4 max-w-sm w-full mx-4">
+            <!-- Spinner animasi (tailwind animate-spin) -->
+            <div class="relative w-16 h-16">
+              <div class="absolute inset-0 rounded-full border-4 border-blue-100 dark:border-gray-700"></div>
+              <div class="absolute inset-0 rounded-full border-4 border-transparent
+                          border-t-blue-600 animate-spin"></div>
+              <div class="absolute inset-0 flex items-center justify-center text-2xl">📊</div>
+            </div>
+
+            <div class="text-center">
+              <div id="wizard-loading-title" class="font-semibold text-gray-800 dark:text-gray-100">
+                Membaca file Excel...
+              </div>
+              <div id="wizard-loading-detail" class="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                Mohon tunggu sebentar
+              </div>
+            </div>
+
+            <!-- Progress bar (opsional untuk lookup) -->
+            <div id="wizard-loading-progress-wrapper" class="w-full hidden">
+              <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 overflow-hidden">
+                <div id="wizard-loading-progress-fill"
+                    class="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                    style="width:0%"></div>
+              </div>
+              <div id="wizard-loading-count" class="text-xs text-gray-500 dark:text-gray-400 text-right mt-1"></div>
+            </div>
+          </div>
+        </div>
+
         <div id="grid-container" class="mt-6 overflow-auto"></div>
         <div class="mt-4 flex space-x-2 flex-wrap gap-y-2">
+          <button id="delete-selected-btn" class="px-4 py-2 bg-red-500 text-white rounded-xl cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed" disabled>Hapus Terpilih (<span id="selected-count">0</span>)</button>
           <button id="delete-empty-btn" class="px-4 py-2 bg-yellow-500 text-white rounded-xl cursor-pointer">Hapus Baris Kosong</button>
           <button id="delete-dup-btn" class="px-4 py-2 bg-yellow-500 text-white rounded-xl cursor-pointer">Hapus Duplikat</button>
-          <button id="restore-btn" class="px-4 py-2 bg-gray-500 text-white rounded-xl cursor-pointer">Restore</button>
+          <button id="restore-btn" class="px-4 py-2 bg-gray-500 text-white rounded-xl cursor-pointer" title="Kembalikan data ke kondisi awal setelah upload Excel (lookup & edit manual akan hilang)">Restore</button>
+          
           <button id="next-to-step3" class="px-6 py-2 bg-blue-600 text-white rounded-xl cursor-pointer ml-auto">Import Data</button>
         </div>
       </div>
       <div id="step3" class="glass p-6 rounded-2xl hidden">
         <h3 class="text-xl font-bold mb-4">Step 3: Import Progress</h3>
         <div id="progress-bar" class="w-full bg-gray-300 dark:bg-gray-700 rounded-full h-4 mb-4">
-          <div id="progress-fill" class="bg-blue-600 h-4 rounded-full" style="width:0%"></div>
+          <div id="progress-fill" class="bg-blue-600 h-4 rounded-full" style="width:0%">
+          <div id="stat-pct" class="text-xs pr-4 text-right text-white mb-2">0/0 (0.0%)</div></div>
         </div>
         <div id="import-stats" class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
           <div>Success: <span id="stat-success">0</span></div>
           <div>Failed: <span id="stat-failed">0</span></div>
           <div>Skipped: <span id="stat-skipped">0</span></div>
+          <div>Durasi:  <span id="stat-elapsed">00:00</span></div>
           <div>ETA: <span id="stat-eta">-</span></div>
         </div>
         <div id="import-log" class="mt-4 h-48 overflow-y-auto bg-gray-100 dark:bg-gray-800 p-3 rounded-xl text-sm font-mono"></div>
@@ -1730,83 +1781,165 @@ export function renderInsertView(container) {
     if (file) handleFile(file);
   });
 
+    // ============================================================
+  // LOADING OVERLAY
+  // ============================================================
+  function showLoading(title = 'Memproses...', detail = 'Mohon tunggu sebentar') {
+    const overlay = document.getElementById('wizard-loading-overlay');
+    const titleEl = document.getElementById('wizard-loading-title');
+    const detailEl = document.getElementById('wizard-loading-detail');
+    const progressWrapper = document.getElementById('wizard-loading-progress-wrapper');
+    const progressFill = document.getElementById('wizard-loading-progress-fill');
+    const countEl = document.getElementById('wizard-loading-count');
+
+    if (!overlay) return;
+    titleEl.textContent = title;
+    detailEl.textContent = detail;
+    progressWrapper.classList.add('hidden');
+    progressFill.style.width = '0%';
+    countEl.textContent = '';
+    overlay.classList.remove('hidden');
+  }
+
+  function updateLoading(title, detail, progress = null) {
+    const titleEl = document.getElementById('wizard-loading-title');
+    const detailEl = document.getElementById('wizard-loading-detail');
+    const progressWrapper = document.getElementById('wizard-loading-progress-wrapper');
+    const progressFill = document.getElementById('wizard-loading-progress-fill');
+    const countEl = document.getElementById('wizard-loading-count');
+
+    if (!titleEl) return;
+    if (title) titleEl.textContent = title;
+    if (detail !== undefined) detailEl.textContent = detail;
+
+    if (progress && typeof progress.current !== 'undefined' && progress.total) {
+      const pct = Math.round((progress.current / progress.total) * 100);
+      progressWrapper.classList.remove('hidden');
+      progressFill.style.width = `${pct}%`;
+      countEl.textContent = `${progress.current} / ${progress.total}`;
+    }
+  }
+
+  function hideLoading() {
+    const overlay = document.getElementById('wizard-loading-overlay');
+    if (overlay) overlay.classList.add('hidden');
+  }
+
   function handleFile(file) {
+    showLoading('Membaca file Excel...', 'Menganalisis sheet dan header');
+
     const reader = new FileReader();
-    reader.onload = (e) => {
-      const data = new Uint8Array(e.target.result);
-      const workbook = XLSX.read(data, { type: 'array' });
-      const sheetNames = workbook.SheetNames;
-      const sheetSelector = document.getElementById('sheet-selector');
-      const sheetList = document.getElementById('sheet-list');
-      sheetList.innerHTML = sheetNames.map(name => `<option value="${name}">${name}</option>`).join('');
-      sheetSelector.classList.remove('hidden');
 
-      const loadSheet = (sheetName) => {
-        const worksheet = workbook.Sheets[sheetName];
-        const json = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-        if (json.length > 0) {
-          headers = json[0].map(h => String(h).trim());
-          rawExcelData = json.slice(1).map(row => {
-            const obj = {};
-            headers.forEach((h, i) => {
-              const value = row[i];
-              obj[h] = value != null ? String(value).trim() : '';
-            });
-            return obj;
-          });
-          runAutoMapping();
-        }
-      };
-
-      sheetList.addEventListener('change', (ev) => loadSheet(ev.target.value));
-      loadSheet(sheetNames[0]);
+    reader.onerror = () => {
+      hideLoading();
+      showToast('Gagal membaca file. Coba lagi.', 'error');
     };
+
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const sheetNames = workbook.SheetNames;
+        const sheetSelector = document.getElementById('sheet-selector');
+        const sheetList = document.getElementById('sheet-list');
+        sheetList.innerHTML = sheetNames.map(name => `<option value="${name}">${name}</option>`).join('');
+        sheetSelector.classList.remove('hidden');
+
+        const loadSheet = async (sheetName) => {
+          updateLoading('Memproses data Excel...', `Sheet: ${sheetName}`);
+          const worksheet = workbook.Sheets[sheetName];
+          const json = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+          if (json.length > 0) {
+            headers = json[0].map(h => String(h).trim());
+            rawExcelData = json.slice(1).map(row => {
+              const obj = {};
+              headers.forEach((h, i) => {
+                const value = row[i];
+                obj[h] = value != null ? String(value).trim() : '';
+              });
+              return obj;
+            });
+
+            if (rawExcelData.length === 0) {
+              hideLoading();
+              showToast('Sheet tidak memiliki data (hanya header).', 'warning');
+              return;
+            }
+
+            await runAutoMapping();   // loading tetap ditampilkan sampai lookup selesai
+          } else {
+            hideLoading();
+            showToast('Sheet kosong.', 'warning');
+          }
+        };
+
+        // Hapus listener lama agar tidak dobel saat ganti sheet
+        sheetList.replaceWith(sheetList.cloneNode(true));
+        document.getElementById('sheet-list').addEventListener('change', (ev) => loadSheet(ev.target.value));
+
+        loadSheet(sheetNames[0]);
+      } catch (err) {
+        console.error('Gagal parse Excel:', err);
+        hideLoading();
+        showToast('File Excel tidak valid atau rusak.', 'error');
+      }
+    };
+
     reader.readAsArrayBuffer(file);
   }
 
   async function runAutoMapping() {
-    const config = getConfig();
-    const fields = config.targetFields.filter(f => f !== 'status');
+    try {
+      const config = getConfig();
+      const fields = config.targetFields.filter(f => f !== 'status');
 
-    mapping = autoMapHeaders(headers, fields);
-    const mappingStatus = document.getElementById('mapping-status');
-    let html = '<div class="text-sm font-semibold mb-2">Auto Mapping:</div><ul class="list-disc pl-6">';
-    for (const [src, map] of Object.entries(mapping)) {
-      if (map.automatic) {
-        html += `<li class="text-green-600">${src} → ${map.target} (${Math.round(map.confidence*100)}%)</li>`;
-      } else {
-        html += `<li class="text-red-600">${src} → Manual mapping needed</li>`;
-      }
-    }
-    html += '</ul>';
-    mappingStatus.innerHTML = html;
+      updateLoading('Auto Mapping...', 'Menganalisis kolom Excel');
+      mapping = autoMapHeaders(headers, fields);
 
-    gridData = rawExcelData.map(row => {
-      const newRow = {};
-      config.targetFields.forEach(f => newRow[f] = '');
+      // ... tampilkan status mapping ...
+      const mappingStatus = document.getElementById('mapping-status');
+      let html = '<div class="text-sm font-semibold mb-2">Auto Mapping:</div><ul class="list-disc pl-6">';
       for (const [src, map] of Object.entries(mapping)) {
-        if (map.automatic && map.target) {
-          let value = row[src];
-          // Jika tidak ditemukan, cari key yang mirip
-          if (value === undefined || value === null) {
-            const normalizedSrc = src.toLowerCase().replace(/\s+/g, '');
-            const foundKey = Object.keys(row).find(k =>
-              k.toLowerCase().replace(/\s+/g, '') === normalizedSrc
-            );
-            if (foundKey) value = row[foundKey];
-          }
-          newRow[map.target] = String(value ?? '').trim();
+        if (map.automatic) {
+          html += `<li class="text-green-600">${src} → ${map.target} (${Math.round(map.confidence*100)}%)</li>`;
+        } else {
+          html += `<li class="text-red-600">${src} → Manual mapping needed</li>`;
         }
       }
-      newRow.__original = { ...row };
-      newRow.status = 'Processing...';
-      return newRow;
-    });
-    originalBackup = JSON.parse(JSON.stringify(gridData));
+      html += '</ul>';
+      mappingStatus.innerHTML = html;
 
-    await performAutoLookup();
-    renderGrid();
-    document.getElementById('run-lookup').classList.remove('hidden');
+      gridData = rawExcelData.map(row => {
+        const newRow = {};
+        config.targetFields.forEach(f => newRow[f] = '');
+        for (const [src, map] of Object.entries(mapping)) {
+          if (map.automatic && map.target) {
+            let value = row[src];
+            if (value === undefined || value === null) {
+              const normalizedSrc = src.toLowerCase().replace(/\s+/g, '');
+              const foundKey = Object.keys(row).find(k =>
+                k.toLowerCase().replace(/\s+/g, '') === normalizedSrc
+              );
+              if (foundKey) value = row[foundKey];
+            }
+            newRow[map.target] = String(value ?? '').trim();
+          }
+        }
+        newRow.__original = { ...row };
+        newRow.status = 'Processing...';
+        return newRow;
+      });
+      originalBackup = JSON.parse(JSON.stringify(gridData));
+
+      await performAutoLookup();   // ← hide loading di sini
+      renderGrid();
+      document.getElementById('run-lookup').classList.remove('hidden');
+
+    } catch (err) {
+      console.error('Auto mapping gagal:', err);
+      hideLoading();
+      showToast('Gagal memproses data: ' + err.message, 'error');
+    }
   }
 
   async function performAutoLookup() {
@@ -1814,11 +1947,60 @@ export function renderInsertView(container) {
     const lookupStatus = document.getElementById('mapping-status');
     lookupStatus.innerHTML += '<p class="text-blue-500 mt-2">🔍 Menjalankan auto lookup...</p>';
 
-    for (let row of gridData) {
-      row.__errors = {};
-      await config.performLookup(row, lookupEngine);
+    const total = gridData.length;
+    if (total === 0) {
+      lookupStatus.innerHTML += '<p class="text-gray-500">Tidak ada data untuk di-lookup.</p>';
+      return;
     }
-    lookupStatus.innerHTML += '<p class="text-green-500">✅ Auto lookup selesai.</p>';
+
+    // Tampilkan overlay loading dengan progress
+    showLoading('Auto Lookup...', `Memproses 0 dari ${total} baris`);
+    updateLoading('Auto Lookup...', `Memproses 0 dari ${total} baris`, { current: 0, total });
+
+    let pointer = 0;
+    let processed = 0;
+    const startTime = Date.now();
+
+    // Worker pool — setiap worker mengambil baris dari `pointer` bersama
+    const worker = async () => {
+      while (pointer < total) {
+        const myIdx = pointer++;
+        const row = gridData[myIdx];
+        row.__errors = {};
+
+        try {
+          await config.performLookup(row, lookupEngine);
+        } catch (e) {
+          console.warn(`Lookup row ${myIdx + 1} gagal:`, e);
+          if (!row.__errors) row.__errors = {};
+          row.__errors.__lookup = e.message || 'Lookup gagal';
+        }
+
+        processed++;
+
+        // Update progress setiap 5 baris (atau saat selesai)
+        if (processed % 5 === 0 || processed === total) {
+          const elapsed = Math.round((Date.now() - startTime) / 1000);
+          const speed = processed > 0 ? (processed / elapsed).toFixed(1) : '0';
+          updateLoading(
+            'Auto Lookup...',
+            `Memproses ${processed} dari ${total} baris · ${speed} baris/detik`,
+            { current: processed, total }
+          );
+        }
+      }
+    };
+
+    // Jalankan N worker paralel
+    const concurrency = Math.max(1, Math.min(LOOKUP_CONCURRENCY, total));
+    const workers = Array.from({ length: concurrency }, () => worker());
+    await Promise.all(workers);
+
+    const durasi = ((Date.now() - startTime) / 1000).toFixed(1);
+    lookupStatus.innerHTML +=
+      `<p class="text-green-500">✅ Auto lookup selesai (${total} baris dalam ${durasi}s)</p>`;
+
+    hideLoading();
   }
 
   function renderGrid() {
@@ -1828,8 +2010,20 @@ export function renderInsertView(container) {
       onCellEdit: (idx, field, value) => {
         if (field !== 'status') gridData[idx][field] = value;
       },
-      onDelete: (idx) => { gridData.splice(idx, 1); renderGrid(); },
-      onSelectionChange: () => {}
+      onDelete: (idx) => {
+        showToast('1 baris dihapus', 'info');
+        // (opsional) update jumlah baris jika ada indikator
+      },
+      onSelectionChange: (selected) => {
+        const btn = document.getElementById('delete-selected-btn');
+        const counter = document.getElementById('selected-count');
+        if (btn) {
+          btn.disabled = selected.size === 0;
+        }
+        if (counter) {
+          counter.textContent = selected.size;
+        }
+      }
     });
     setTimeout(() => {
       const cells = gridContainer.querySelectorAll('td[data-field="status"]');
@@ -1863,9 +2057,36 @@ export function renderInsertView(container) {
     gridEditor.setData(gridData);
   });
 
-  document.getElementById('restore-btn').addEventListener('click', () => {
+  document.getElementById('restore-btn').addEventListener('click', async () => {
+    if (!confirm('Yakin reset? Semua hasil lookup dan perubahan manual akan hilang.')) return;
     gridData = JSON.parse(JSON.stringify(originalBackup));
+    await performAutoLookup();
     gridEditor.setData(gridData);
+    showToast('Data dikembalikan ke kondisi awal.', 'info');
+  });
+
+  // Hapus baris yang dicentang
+  document.getElementById('delete-selected-btn').addEventListener('click', () => {
+    if (!gridEditor) return;
+
+    const selected = Array.from(gridEditor.selectedRows).sort((a, b) => b - a);
+    // Urutkan menurun agar index yang dihapus tidak menggeser index berikutnya
+    if (selected.length === 0) return;
+
+    const count = selected.length;
+    if (!confirm(`Hapus ${count} baris yang terpilih?`)) return;
+
+    selected.forEach(idx => {
+      if (idx >= 0 && idx < gridData.length) gridData.splice(idx, 1);
+    });
+    gridEditor.selectedRows.clear();
+    gridEditor.setData(gridData);
+    showToast(`${count} baris dihapus`, 'success');
+
+    const btn = selected.length > 0 ? document.getElementById('delete-selected-btn') : null;
+    const counter = document.getElementById('selected-count');
+    if (btn) btn.disabled = true;
+    if (counter) counter.textContent = '0';
   });
 
   document.getElementById('next-to-step3').addEventListener('click', async () => {
@@ -1874,14 +2095,22 @@ export function renderInsertView(container) {
 
     const validator = new Validator(fields, config.requiredFields);
     const errors = validator.validateAll(gridData, mapping);
-    gridData.forEach((row, i) => { row.__errors = errors[i]?.errors || {}; });
+    gridData.forEach((row, i) => {
+      const lookupErrs = row.__errors || {};               // error dari performLookup
+      const validErrs  = errors[i]?.errors || {};          // error dari validator
+      row.__errors = { ...lookupErrs, ...validErrs };       // GABUNG, bukan timpa
+    });
     gridData.forEach(row => {
       const msgs = Object.values(row.__errors || {}).filter(m => m);
       row.status = msgs.length > 0 ? msgs.join('; ') : 'OK';
     });
     gridEditor.setData(gridData);
-    const hasError = errors.some(e => Object.keys(e.errors).length > 0);
+
+    const hasError = gridData.some(row => Object.keys(row.__errors || {}).length > 0);
     if (hasError) {
+      // ← Aktifkan filter error otomatis
+      gridEditor.setErrorOnly(true);
+      const totalError = errors.filter(e => Object.keys(e.errors).length > 0).length;
       showToast('Terdapat error validasi, periksa sel berwarna merah.', 'error');
       return;
     }
@@ -1890,7 +2119,9 @@ export function renderInsertView(container) {
     document.getElementById('step2').classList.add('hidden');
     document.getElementById('step3').classList.remove('hidden');
 
-    let apiData = gridData.map(row => config.transformFn(row)); //data siap ke proses import
+    const validRows = gridData.filter(row => Object.keys(row.__errors || {}).length === 0);
+
+    let apiData = validRows.map(row => config.transformFn(row)); //data siap ke proses import
     if (apiData.some(item => Array.isArray(item))) {
       apiData = apiData.flat();
     }
@@ -1908,42 +2139,59 @@ export function renderInsertView(container) {
     importProcess = new ImportProcess(api, apiData, currentMethod);
 
     importProcess.start(progress => {
-      if (progress.stats) {
-        const pct = progress.stats.totalBatches > 0 ? (progress.stats.currentBatch / progress.stats.totalBatches) * 100 : 0;
-        document.getElementById('progress-fill').style.width = `${pct}%`;
-        document.getElementById('stat-success').textContent = progress.stats.success;
-        document.getElementById('stat-failed').textContent = progress.stats.failed;
-        document.getElementById('stat-skipped').textContent = progress.stats.skipped;
-        document.getElementById('stat-eta').textContent = progress.stats.eta;
-      }
+    // ===== Stats + Progress bar (berbasis baris, bukan batch) =====
+    if (progress.stats) {
+      const s = progress.stats;
+      const total = s.totalRows || 0;
+      const done  = s.processedRows || 0;
+      const pct   = total > 0 ? Math.min(100, (done / total) * 100) : 0;
 
-      const logEl = document.getElementById('import-log');
-      if (logEl && progress.logs) {
-        logEl.innerHTML = progress.logs.map(log => {
-          const icon = log.type === 'success' ? '✅' : (log.type === 'failed' ? '❌' : '⚠️');
-          const row = log.row || {};
-          const disp = row._display || {};
-          
-          let mk = disp.kode_mata_kuliah || disp.nim || row.nik || row.kode_mata_kuliah || row.id_matkul || '?';
-          let nama = disp.nama || disp.nama_mata_kuliah || row.nama_mata_kuliah || row.nama_mahasiswa || row.nama_dosen || disp.nama_dosen || disp.nama_mahasiswa || disp.nama_evaluasi || disp.nama_komponen || '';
-          let kelas = disp.kelas || disp.nama_kelas || row.kelas || row.nama_kelas_kuliah || '?';
-          let aksi = disp.aksi || row.tipe || currentMethod;
-          let status = log.message;
+      document.getElementById('progress-fill').style.width = `${pct}%`;
+      document.getElementById('stat-pct').textContent = `${done}/${total} (${pct.toFixed(1)}%)`;
 
-          const nim = disp.nim || '';
-          const extra = nim ? ` (NIM: ${nim})` : '';
-          
-          let info = `[${mk}] ${nama} | ${kelas} ${aksi} | Ket: ${status}`;
-          if (info.length > 300) info = info.substring(0, 310) + '...';
-          
-          let detail = '';
-          if (log.type === 'failed') {
-            detail = `<br><small class="text-gray-400">Payload: ${JSON.stringify(disp)}</small>`;
-          }
-           return `<div class="py-1">${icon} ${info} ${detail}</div>`;
-        }).join('');
-        logEl.scrollTop = logEl.scrollHeight;
+      document.getElementById('stat-success').textContent = s.success;
+      document.getElementById('stat-failed').textContent  = s.failed;
+      document.getElementById('stat-skipped').textContent = s.skipped;
+      document.getElementById('stat-eta').textContent     = s.eta;
+
+      const elapsedEl = document.getElementById('stat-elapsed');
+        if (elapsedEl) elapsedEl.textContent = s.elapsedText || '00:00';   // ← baru
+    }
+
+    // ===== Log realtime — append incremental, batasi DOM =====
+    const logEl = document.getElementById('import-log');
+    if (logEl && progress.logs && progress.logs.length > 0) {
+      const html = progress.logs.map(log => {
+        const icon = log.type === 'success' ? '✅' : (log.type === 'failed' ? '❌' : '⚠️');
+        const row  = log.row || {};
+        const disp = row._display || {};
+
+        const mk    = disp.kode_mata_kuliah || disp.nim || row.nik || row.kode_mata_kuliah || row.id_matkul || '?';
+        const nama  = disp.nama || disp.nama_mata_kuliah || row.nama_mata_kuliah || row.nama_mahasiswa
+                      || row.nama_dosen || disp.nama_dosen || disp.nama_mahasiswa
+                      || disp.nama_evaluasi || disp.nama_komponen || '';
+        const kelas = disp.kelas || disp.nama_kelas || row.kelas || row.nama_kelas_kuliah || '?';
+        const aksi  = disp.aksi || row.tipe || currentMethod;
+
+        let info = `[${mk}] ${nama} | ${kelas} ${aksi} | Ket: ${log.message}`;
+        if (info.length > 300) info = info.substring(0, 310) + '...';
+
+        const detail = log.type === 'failed'
+          ? `<br><small class="text-gray-400">Payload: ${JSON.stringify(disp)}</small>`
+          : '';
+
+        return `<div class="py-1">${icon} ${info} ${detail}</div>`;
+      }).join('');
+
+      if (progress.append) {
+        logEl.insertAdjacentHTML('beforeend', html);
+        // Batasi DOM — simpan 300 log terakhir saja
+        while (logEl.children.length > 300) logEl.removeChild(logEl.firstChild);
+      } else {
+        logEl.innerHTML = html;
       }
+      logEl.scrollTop = logEl.scrollHeight;
+    }
     }).then(async (result) => {
         const logEl = document.getElementById('import-log');
         // Untuk metode yang menghasilkan banyak record (UpdateNilaiLengkap), tampilkan ringkasan

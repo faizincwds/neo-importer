@@ -1,6 +1,19 @@
-export const DEBUG_API = true; // true untuk menampilkan log API di console
+export const DEBUG_API = false; // true untuk menampilkan log API di console
 export const API_BASE = localStorage.getItem('nf_api_url') || 'http://localhost:3003';
 export const API_TYPE = localStorage.getItem('nf_api_type') || 'live2.php';
+
+export const IMPORT_DEFAULTS = {
+  batchSize: 50, // (jumlah baris per batch)
+  delay: 10, // (jeda antar baris dalam milidetik)
+  concurrency: 7,     // ← BARU: jumlah request paralel
+  retry: 0, // (jumlah percobaan ulang jika gagal)
+  continueOnError: true,
+  skipInvalid: true,
+  timeout: 30000,
+  autoSaveLog: true,
+  autoBackup: true,
+};
+
 export const STORAGE_KEYS = {
   TOKEN: 'nf_token',
   USER: 'nf_user',
@@ -35,16 +48,7 @@ export const CACHE_TTL = {
   jenis_aktivitas: 24 * 60 * 60 * 1000,
 };
 
-export const IMPORT_DEFAULTS = {
-  batchSize: 10, // (jumlah baris per batch)
-  delay: 200, // (jeda antar baris dalam milidetik)
-  retry: 2, // (jumlah percobaan ulang jika gagal)
-  continueOnError: true,
-  skipInvalid: true,
-  timeout: 30000,
-  autoSaveLog: true,
-  autoBackup: true,
-};
+
 
 export const FIELD_SYNONYMS = {
   // ========== FIELD UTAMA (KULIAH, DLL.) ==========

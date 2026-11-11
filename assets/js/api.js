@@ -4,6 +4,8 @@ import { loggerInst } from './loggerView.js';
 export class NeoFeederAPI {
   constructor() {
     this.token = localStorage.getItem(STORAGE_KEYS.TOKEN) || '';
+    this._memCache = new Map();      // ← cache di memori (hindari JSON.parse berulang)
+    this._pendingFetch = new Map();  // ← dedup fetch paralel untuk key yang sama
   }
 
   setToken(token) {
@@ -243,41 +245,35 @@ export class NeoFeederAPI {
 
   // ============ CACHE HELPER ============
 
-  // _getCache(key) {
-  //   try {
-  //     const raw = localStorage.getItem(`${CACHE_PREFIX}${key}`);
-  //     return raw ? JSON.parse(raw) : null;
-  //   } catch (e) { return null; }
-  // }
   _getCache(key) {
+    // Mem-first: hindari JSON.parse berulang untuk list besar
+    if (this._memCache.has(key)) return this._memCache.get(key);
     try {
       const raw = localStorage.getItem(`${CACHE_PREFIX}${key}`);
       if (!raw) return null;
       const parsed = JSON.parse(raw);
-      // Perbarui timestamp saat diakses
-      parsed.timestamp = Date.now();
-      localStorage.setItem(`${CACHE_PREFIX}${key}`, JSON.stringify(parsed));
+      this._memCache.set(key, parsed);
       return parsed;
     } catch (e) { return null; }
   }
 
   _setCache(key, data, count) {
+    const entry = { data, count, timestamp: Date.now() };
+    this._memCache.set(key, entry);
     try {
-      localStorage.setItem(`${CACHE_PREFIX}${key}`, JSON.stringify({
-        data,
-        count,
-        timestamp: Date.now()
-      }));
+      localStorage.setItem(`${CACHE_PREFIX}${key}`, JSON.stringify(entry));
     } catch (e) {
       console.warn('Cache save failed (quota?), skip', e);
     }
   }
 
   invalidateCache(key) {
+    this._memCache.delete(key);
     localStorage.removeItem(`${CACHE_PREFIX}${key}`);
   }
 
   invalidateAllCache() {
+    this._memCache.clear();
     Object.keys(localStorage)
       .filter(k => k.startsWith(CACHE_PREFIX))
       .forEach(k => localStorage.removeItem(k));
@@ -287,20 +283,23 @@ export class NeoFeederAPI {
    * Ambil data dengan cache + TTL + count-check.
    */
   async _cachedFetch(key, fetchFn, ttl, countFn = null) {
-    const cached = this._getCache(key);
-    const now = Date.now();
+  const cached = this._getCache(key);
+  const now = Date.now();
 
-    if (cached && (now - cached.timestamp) < ttl) {
-      if (countFn) {
+  if (cached) {
+    const age = now - cached.timestamp;
+    if (age < ttl) {
+      // Cek countFn HANYA saat mendekati kedaluwarsa (80% TTL).
+      // Tidak setiap hit. Ini memangkas 3-4 request per baris.
+      if (countFn && age > ttl * 0.8) {
         try {
           const currentCount = await countFn();
           if (currentCount !== null && currentCount === cached.count) {
             if (DEBUG_API) console.log(`[CACHE HIT] ${key} (${currentCount} item)`);
             return cached.data;
           }
-          if (DEBUG_API) console.log(`[CACHE STALE] ${key} count berubah ${cached.count} → ${currentCount}`);
+          if (DEBUG_API) console.log(`[CACHE STALE] ${key} count berubah`);
         } catch (e) {
-          if (DEBUG_API) console.log(`[CACHE HIT–fallback] ${key}`);
           return cached.data;
         }
       } else {
@@ -308,16 +307,29 @@ export class NeoFeederAPI {
         return cached.data;
       }
     }
+  }
 
-    if (DEBUG_API) console.log(`[CACHE MISS] ${key}, fetch baru`);
+  // Dedup: 5 worker yang minta data yang sama saat cache kosong → 1 fetch saja
+  if (this._pendingFetch.has(key)) {
+    return this._pendingFetch.get(key);
+  }
+
+  if (DEBUG_API) console.log(`[CACHE MISS] ${key}, fetch baru`);
+  const promise = (async () => {
     const data = await fetchFn();
     let count = null;
-    if (countFn) {
-      try { count = await countFn(); } catch (e) { /* ignore */ }
-    }
+    if (countFn) { try { count = await countFn(); } catch (e) {} }
     this._setCache(key, data, count);
     return data;
+  })();
+
+  this._pendingFetch.set(key, promise);
+  try {
+    return await promise;
+  } finally {
+    this._pendingFetch.delete(key);
   }
+}
 
   // Helper count – panggil GetCount* dan kembalikan angka
   async _count(method) {
@@ -978,10 +990,8 @@ export class NeoFeederAPI {
     if (data && data.id_aktivitas) return data.id_aktivitas;
     if (res.data && typeof res.data === 'string') return res.data;
     throw new Error('Gagal mendapatkan id_aktivitas setelah insert');
-    if (DEBUG_API) console.log('ID AK:', data.id_aktivitas);
 
-    if (res.data && typeof res.data === 'string') return res.data;
-    throw new Error('Gagal mendapatkan id_aktivitas setelah insert');
+    if (DEBUG_API) console.log('ID AK:', data.id_aktivitas);
   }
 
   // Insert Anggota Aktivitas Mahasiswa

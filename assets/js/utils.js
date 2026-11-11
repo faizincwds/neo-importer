@@ -60,3 +60,4 @@ export function hideModal() {
   modal.classList.add('hidden');
   modal.innerHTML = '';
 }
+
