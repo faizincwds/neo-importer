@@ -6,7 +6,7 @@ const CLEANUP_INTERVAL = 60 * 60 * 1000;
 // Kunci meta untuk mencatat kapan terakhir cleanup dijalankan
 const LAST_CLEANUP_KEY = 'nf_last_cleanup';
 
-// Umur maksimal log aktivitas (7 hari)
+// Umur maksimal log aktivitas (3 hari)
 const LOG_MAX_AGE = 3 * 24 * 60 * 60 * 1000;
 
 // TTL default kalau kunci cache tidak dikenal
@@ -17,6 +17,8 @@ const DEFAULT_TTL = 24 * 60 * 60 * 1000;
  * Contoh: 'wilayah_3' → cari CACHE_TTL.wilayah
  */
 function getCacheTtlByKey(cacheKey) {
+  // Cek utuh dulu (mis. 'jenis_tinggal'), baru prefix (mis. 'wilayah_3')
+  if (CACHE_TTL[cacheKey]) return CACHE_TTL[cacheKey];
   const base = cacheKey.split('_')[0];
   return CACHE_TTL[base] || CACHE_TTL[cacheKey] || DEFAULT_TTL;
 }
@@ -108,6 +110,11 @@ export function cleanOldLogs() {
  * kecuali `force = true`.
  */
 export function runCleanup(force = false) {
+  // Skip saat import berjalan
+  if (window.__isImporting) {
+    if (DEBUG_API) console.log('[Cleanup] Dilewati: import sedang berjalan');
+    return;
+  }
   const last = parseInt(localStorage.getItem(LAST_CLEANUP_KEY) || '0', 10);
   const now = Date.now();
 

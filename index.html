@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="id">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -10,40 +11,59 @@
   <link rel="stylesheet" href="assets/css/font-awesome-v7.3.1-all.min.css">
   <link rel="stylesheet" href="assets/css/style.css">
 </head>
+
 <body class="bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100 min-h-screen flex">
 
   <!-- Overlay untuk mobile -->
   <div id="sidebar-overlay" class="fixed inset-0 bg-black/50 z-30 hidden md:hidden" aria-hidden="true"></div>
 
   <!-- Sidebar -->
-  <aside id="sidebar" class="fixed md:static inset-y-0 left-0 z-40 w-64 bg-white dark:bg-gray-800 shadow-xl flex flex-col p-4 space-y-6 transition-transform duration-300 -translate-x-full md:translate-x-0 overflow-y-auto">
+  <aside id="sidebar"
+    class="fixed md:static inset-y-0 left-0 z-40 w-64 bg-white dark:bg-gray-800 shadow-xl flex flex-col p-4 space-y-6 transition-transform duration-300 -translate-x-full md:translate-x-0 overflow-y-auto">
     <div class="flex items-center justify-between">
       <h1 class="text-2xl font-bold text-blue-600 dark:text-blue-400">Neo Feeder</h1>
       <!-- Tombol toggle dark/light -->
-      <button id="theme-toggle-btn" class="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition" title="Toggle Dark/Light">
+      <button id="theme-toggle-btn" class="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition"
+        title="Toggle Dark/Light">
         <span id="theme-icon-dark" class="hidden dark:inline">☀️</span>
         <span id="theme-icon-light" class="inline dark:hidden">🌙</span>
       </button>
     </div>
     <nav id="sidebar-nav" class="flex flex-col space-y-2">
-      <button data-view="dashboard" class="nav-btn text-left px-4 py-2 rounded-lg hover:bg-blue-100 dark:hover:bg-gray-700 transition disabled:opacity-50 disabled:cursor-not-allowed" disabled>📊 Dashboard</button>
-      <button data-view="import" class="nav-btn text-left px-4 py-2 rounded-lg hover:bg-blue-100 dark:hover:bg-gray-700 transition disabled:opacity-50 disabled:cursor-not-allowed" disabled>📥 Import</button>
-      <button data-view="update" class="nav-btn text-left px-4 py-2 rounded-lg hover:bg-blue-100 dark:hover:bg-gray-700 transition disabled:opacity-50 disabled:cursor-not-allowed" disabled>✏️ Update</button>
-      <button data-view="delete" class="nav-btn text-left px-4 py-2 rounded-lg hover:bg-blue-100 dark:hover:bg-gray-700 transition disabled:opacity-50 disabled:cursor-not-allowed" disabled>🗑️ Delete</button>
-      <button data-view="referensi" class="nav-btn text-left px-4 py-2 rounded-lg hover:bg-blue-100 dark:hover:bg-gray-700 transition disabled:opacity-50 disabled:cursor-not-allowed" disabled>📚 Referensi</button>
-      <button data-view="config" class="nav-btn text-left px-4 py-2 rounded-lg hover:bg-blue-100 dark:hover:bg-gray-700 transition disabled:opacity-50 disabled:cursor-not-allowed" disabled>⚙️ Konfigurasi</button>
-      <button data-view="cleanup-now-btn" id="cleanup-now-btn" class="nav-btn text-left px-4 py-2 rounded-lg hover:bg-blue-100 dark:hover:bg-gray-700 transition disabled:opacity-50 disabled:cursor-not-allowed" disabled>🧹 Bersihkan Cache</button>
+      <button data-view="dashboard"
+        class="nav-btn text-left px-4 py-2 rounded-lg hover:bg-blue-100 dark:hover:bg-gray-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+        disabled>📊 Dashboard</button>
+      <button data-view="import"
+        class="nav-btn text-left px-4 py-2 rounded-lg hover:bg-blue-100 dark:hover:bg-gray-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+        disabled>📥 Import</button>
+      <button data-view="update"
+        class="nav-btn text-left px-4 py-2 rounded-lg hover:bg-blue-100 dark:hover:bg-gray-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+        disabled>✏️ Update</button>
+      <button data-view="delete"
+        class="nav-btn text-left px-4 py-2 rounded-lg hover:bg-blue-100 dark:hover:bg-gray-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+        disabled>🗑️ Delete</button>
+      <button data-view="referensi"
+        class="nav-btn text-left px-4 py-2 rounded-lg hover:bg-blue-100 dark:hover:bg-gray-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+        disabled>📚 Referensi</button>
+      <button data-view="config"
+        class="nav-btn text-left px-4 py-2 rounded-lg hover:bg-blue-100 dark:hover:bg-gray-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+        disabled>⚙️ Konfigurasi</button>
+      <button data-view="cleanup" id="cleanup-now-btn"
+        class="nav-btn text-left px-4 py-2 rounded-lg hover:bg-blue-100 dark:hover:bg-gray-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+        disabled>🧹 Bersihkan Cache</button>
     </nav>
     <div class="mt-auto">
       <div id="user-info" class="text-sm text-center p-2 text-white dark:bg-gray-700 rounded-lg">🔒 Belum login</div>
-      <button id="logout-btn" class="w-full text-sm mt-2 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition hidden">Logout</button>
+      <button id="logout-btn"
+        class="w-full text-sm mt-2 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition hidden">Logout</button>
     </div>
   </aside>
 
   <!-- Tombol hamburger untuk mobile -->
-  <button id="menu-toggle-btn" class="md:hidden fixed top-4 left-4 z-50 p-2 rounded-lg bg-white dark:bg-gray-800 shadow-lg" aria-label="Menu">
+  <button id="menu-toggle-btn"
+    class="md:hidden fixed top-4 left-4 z-50 p-2 rounded-lg bg-white dark:bg-gray-800 shadow-lg" aria-label="Menu">
     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
     </svg>
   </button>
 
@@ -51,69 +71,110 @@
   <main class="flex-1 px-4 pt-4 md:pt-6 justify-between overflow-auto flex flex-col" id="main-content">
     <!-- Tampilan awal sebelum login -->
     <div id="kontenUtama" class="flex-1">
-      <section id="view-login" class="max-w-md mx-auto mt-10 md:mt-20 glass p-6 md:p-8 rounded-2xl shadow-2xl">
+      <section id="view-login" class="md:min-w-100 sm:max-w-full mx-auto  mt-10 md:mt-20 glass p-6 md:p-8 rounded-2xl shadow-2xl">
         <h2 class="text-2xl font-bold mb-6 text-center">Login Neo Feeder</h2>
         <div class="space-y-4">
           <!-- Input URL API -->
           <div>
-            <label class="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">URL API Feeder</label>
-            <input id="api-url" type="text" placeholder="http://localhost:3003" value="http://localhost:3003"
-                  class="w-full p-3 rounded-xl bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-800 dark:text-gray-100">
+            <label class="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300"><i
+                class="fas fa-link mr-1 text-blue-500"></i> URL API Feeder</label>
+            <div class="relative">
+              <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400">
+                <i class="fas fa-globe"></i>
+              </span>
+
+              <input id="api-url" type="text" placeholder="http://localhost:3003" value="http://localhost:3003"
+                class="w-full pl-10 pr-3 py-3 rounded-md bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-800 dark:text-gray-100">
+            </div>
           </div>
 
           <!-- Input Type API -->
           <div>
-            <select id="api-type" class="w-full p-3 rounded-xl bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-800 dark:text-gray-100">
-              <option value="sandbox2.php">sandbox2.php (Sandbox)</option>
-              <option value="live2.php">live2.php (Live)</option>
-            </select>
+            <label class="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
+              <i class="fas fa-server mr-1 text-blue-500"></i>
+              Environment API
+            </label>
+            <div class="relative">
+              <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400 pointer-events-none">
+                <i class="fas fa-code-branch"></i>
+              </span>
+              <select id="api-type"
+                class="w-full pl-9 pr-3 py-3 rounded-md bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-800 dark:text-gray-100">
+                <option value="sandbox2.php">Sandbox (sandbox2.php)</option>
+                <option value="live2.php">Live (live2.php)</option>
+              </select>
+            </div>
           </div>
-          
-          <label class="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">Login User</label>
-          <input id="username" type="text" placeholder="Username" class="w-full p-3 rounded-xl bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600">
-          <input id="password" type="password" placeholder="Password" class="w-full p-3 rounded-xl bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600">
-          <button id="get-token-btn" class="w-full py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition flex items-center justify-center gap-2">
+
+          <div>
+            <label class="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
+              <i class="fas fa-user-circle mr-1 text-blue-500"></i>
+              Login User
+            </label>
+
+            <div class="relative">
+              <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400">
+                <i class="fas fa-user"></i>
+              </span>
+
+              <input id="username" type="text" placeholder="Username"
+                class="w-full pl-10 pr-3 py-3 rounded-md bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-800 dark:text-gray-100">
+            </div>
+          </div>
+          <div>
+            <div class="relative">
+              <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400">
+                <i class="fas fa-key"></i>
+              </span>
+
+              <input id="password" type="password" placeholder="Password"
+                class="w-full pl-10 pr-3 py-3 rounded-md bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-800 dark:text-gray-100">
+            </div>
+          </div>
+
+          <button id="get-token-btn"
+            class="w-full py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition flex items-center justify-center gap-2">
+
+            <i class="fas fa-sign-in-alt"></i>
+            <span id="btn-text">Get Token</span>
+            <span id="btn-loader" class="hidden animate-spin">
+              <i class="fas fa-spinner"></i>
+            </span>
+          </button>
+
+          <!-- <input id="username" type="text" placeholder="Username" class="w-full p-3 rounded-md bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600"> -->
+          <!-- <input id="password" type="password" placeholder="Password" class="w-full p-3 rounded-md bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600"> -->
+          <!-- <button id="get-token-btn" class="w-full py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition flex items-center justify-center gap-2">
             <span id="btn-text">Get Token</span>
             <span id="btn-loader" class="hidden animate-spin">⏳</span>
-          </button>
+          </button> -->
         </div>
         <div id="login-status" class="mt-4 text-center text-sm"></div>
       </section>
     </div>
 
-    <!-- === LOG AKTIVITAS: SELALU DI BAWAH, TIDAK BERGERAK === -->
-    <!-- <div id="activity-log-wrapper" class="mt-4 border-gray-200 rounded-sm bg-gray-800 text-white shadow-sm">
-      <div class="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-700">
-        <h3 class="text-sm font-semibold flex items-center gap-2">
-          <i class="fa-solid fa-terminal text-blue-500"></i>
-          Log Aktivitas
-        </h3>
-        <button id="clear-log-btn" class="px-3 py-1 text-xs rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-all">
-          <i class="fa-solid fa-eraser mr-1"></i>Bersihkan
-        </button>
-      </div>
-      <div id="activity-log" class="h-44 md:h-52 overflow-y-auto p-3 font-mono text-xs bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-300">
-        <div class="text-center text-gray-400 dark:text-gray-500 py-4">Siap memproses...</div>
-      </div>
-    </div> -->
-
     <div id="activity-log-wrapper" class="mt-4 border-gray-200 rounded-sm bg-gray-800 text-white shadow-sm log-panel">
       <!-- Header -->
-      <div class="log-panel-header flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-700 cursor-pointer select-none" id="log-toggle-header">
+      <div
+        class="log-panel-header flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-700 cursor-pointer select-none"
+        id="log-toggle-header">
         <span class="text-sm font-semibold flex items-center gap-2 text-gray-700 dark:text-gray-300">
           <i class="fa-solid fa-terminal text-blue-500"></i>
           Log Aktivitas
           <span id="log-count" class="text-gray-400 dark:text-gray-500 text-xs">(0)</span>
         </span>
         <div class="flex items-center gap-2">
-          <button id="clear-log-btn" class="px-3 py-1 text-xs rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition">
+          <button id="clear-log-btn"
+            class="px-3 py-1 text-xs rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition">
             <i class="fa-solid fa-eraser mr-1"></i>Bersihkan
           </button>
-          <i id="log-chevron" class="fa-solid fa-chevron-down text-gray-400 dark:text-gray-500 transition-transform text-sm log-chevron"></i>
+          <i id="log-chevron"
+            class="fa-solid fa-chevron-down text-gray-400 dark:text-gray-500 transition-transform text-sm log-chevron"></i>
         </div>
       </div>
       <!-- Body log -->
-      <div id="activity-log" class="log-panel-body h-48 overflow-y-auto p-3 font-mono text-xs bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-300">
+      <div id="activity-log"
+        class="log-panel-body h-48 overflow-y-auto p-3 font-mono text-xs bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-300">
         <div class="text-center text-gray-400 dark:text-gray-500 py-4">Siap memproses...</div>
       </div>
     </div>
@@ -127,4 +188,5 @@
 
   <script type="module" src="assets/js/app.js"></script>
 </body>
+
 </html>

@@ -19,7 +19,7 @@ export async function handleLogin(apiUrl, apiType, username, password) {
 
     // Simpan username saja
     localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify({ username }));
-    localStorage.removeItem(STORAGE_KEYS.PROFIL_PT);
+    localStorage.removeItem(STORAGE_KEYS.PROFIL_PT); // Hapus profil PT lama jika ada
 
     return true;
     

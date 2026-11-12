@@ -33,6 +33,9 @@ export function initViewManager(mainContent) {
       case 'config':
         renderConfigView(mainContent);
         break;
+      case 'cleanup':
+        // Handle cleanup view
+        break;
       default:
         mainContent.innerHTML = `<div class="glass p-6 rounded-2xl"><h2 class="text-xl font-bold">${viewName} (Segera hadir)</h2></div>`;
     }

@@ -5,6 +5,7 @@ import { NeoFeederAPI } from './api.js';
 import { GridEditor } from './gridEditor.js';
 import { ImportProcess } from './importProcess.js';
 import { sanitizeText, showToast } from './utils.js';
+import { DEBUG_API } from './config.js';
 
 // ============================================================
 // KONFIGURASI CONCURRENCY UNTUK AUTO LOOKUP
@@ -14,9 +15,6 @@ import { sanitizeText, showToast } from './utils.js';
 // - 8  : lebih cepat, gunakan jika server sanggup
 // - 3  : pakai jika server sering [429]/[500]
 const LOOKUP_CONCURRENCY = 5;
-
-// Ukuran chunk untuk setiap "batch" lookup (hanya untuk progress reporting)
-const LOOKUP_BATCH_SIZE = 50;
 
 const METHOD_GROUPS = {
   'Kelas Kuliah (KRS)': [
@@ -1705,11 +1703,16 @@ export function renderInsertView(container) {
       </div>
       <div id="step3" class="glass p-6 rounded-2xl hidden">
         <h3 class="text-xl font-bold mb-4">Step 3: Import Progress</h3>
-        <div id="progress-bar" class="w-full bg-gray-300 dark:bg-gray-700 rounded-full h-4 mb-4">
-          <div id="progress-fill" class="bg-blue-600 h-4 rounded-full" style="width:0%">
-          <div id="stat-pct" class="text-xs pr-4 text-right text-white mb-2">0/0 (0.0%)</div></div>
+        <div id="progress-wrapper" class="mb-4">
+          <div class="flex justify-between items-center mb-1.5 text-sm">
+            <span class="font-medium text-gray-700 dark:text-gray-300">Progress Import</span>
+            <span id="stat-pct" class="font-mono text-gray-600 dark:text-gray-400 tabular-nums">0/0 (0.0%)</span>
+          </div>
+          <div class="w-full h-4 bg-gray-300 dark:bg-gray-700 rounded-full overflow-hidden">
+            <div id="progress-fill" class="h-4 bg-gradient-to-r from-blue-500 via-blue-600 to-indigo-600 rounded-full transition-all duration-300" style="width:0%"></div>
+          </div>
         </div>
-        <div id="import-stats" class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+        <div id="import-stats" class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-4">
           <div>Success: <span id="stat-success">0</span></div>
           <div>Failed: <span id="stat-failed">0</span></div>
           <div>Skipped: <span id="stat-skipped">0</span></div>
@@ -2111,7 +2114,7 @@ export function renderInsertView(container) {
       // ← Aktifkan filter error otomatis
       gridEditor.setErrorOnly(true);
       const totalError = errors.filter(e => Object.keys(e.errors).length > 0).length;
-      showToast('Terdapat error validasi, periksa sel berwarna merah.', 'error');
+      showToast(`Terdapat ${totalError} baris dengan error validasi. Periksa sel merah.`, 'error');
       return;
     }
 
@@ -2130,69 +2133,83 @@ export function renderInsertView(container) {
       showToast('Tidak ada data yang perlu diproses. Periksa kembali komponen yang dipilih.', 'warning');
       return;
     }
-
-    const lastIdKelas = apiData[0]?.id_kelas_kuliah || '';
-    const lastNim = gridData[0]?.nim || '';
     
-    console.log('Data siap import:', apiData);
+    if (DEBUG_API) console.log('Data siap import:', apiData);
+
+    api.persistCache = false;      // ← matikan localStorage selama import
+    window.__isImporting = true;   // ← tambah
 
     importProcess = new ImportProcess(api, apiData, currentMethod);
 
     importProcess.start(progress => {
-    // ===== Stats + Progress bar (berbasis baris, bukan batch) =====
-    if (progress.stats) {
-      const s = progress.stats;
-      const total = s.totalRows || 0;
-      const done  = s.processedRows || 0;
-      const pct   = total > 0 ? Math.min(100, (done / total) * 100) : 0;
 
-      document.getElementById('progress-fill').style.width = `${pct}%`;
-      document.getElementById('stat-pct').textContent = `${done}/${total} (${pct.toFixed(1)}%)`;
+      if (DEBUG_API) console.log('persistCache:', api.persistCache);
 
-      document.getElementById('stat-success').textContent = s.success;
-      document.getElementById('stat-failed').textContent  = s.failed;
-      document.getElementById('stat-skipped').textContent = s.skipped;
-      document.getElementById('stat-eta').textContent     = s.eta;
+      // ===== Stats + Progress bar (berbasis baris, bukan batch) =====
+      if (progress.stats) {
+        const s = progress.stats;
+        const total = s.totalRows || 0;
+        const done  = s.processedRows || 0;
+        const pct   = total > 0 ? Math.min(100, (done / total) * 100) : 0;
 
-      const elapsedEl = document.getElementById('stat-elapsed');
-        if (elapsedEl) elapsedEl.textContent = s.elapsedText || '00:00';   // ← baru
-    }
+        document.getElementById('progress-fill').style.width = `${pct}%`;
+        document.getElementById('stat-pct').textContent = `${done}/${total} (${pct.toFixed(1)}%)`;
 
-    // ===== Log realtime — append incremental, batasi DOM =====
-    const logEl = document.getElementById('import-log');
-    if (logEl && progress.logs && progress.logs.length > 0) {
-      const html = progress.logs.map(log => {
-        const icon = log.type === 'success' ? '✅' : (log.type === 'failed' ? '❌' : '⚠️');
-        const row  = log.row || {};
-        const disp = row._display || {};
+        document.getElementById('stat-success').textContent = s.success;
+        document.getElementById('stat-failed').textContent  = s.failed;
+        document.getElementById('stat-skipped').textContent = s.skipped;
+        document.getElementById('stat-eta').textContent     = s.eta;
 
-        const mk    = disp.kode_mata_kuliah || disp.nim || row.nik || row.kode_mata_kuliah || row.id_matkul || '?';
-        const nama  = disp.nama || disp.nama_mata_kuliah || row.nama_mata_kuliah || row.nama_mahasiswa
-                      || row.nama_dosen || disp.nama_dosen || disp.nama_mahasiswa
-                      || disp.nama_evaluasi || disp.nama_komponen || '';
-        const kelas = disp.kelas || disp.nama_kelas || row.kelas || row.nama_kelas_kuliah || '?';
-        const aksi  = disp.aksi || row.tipe || currentMethod;
-
-        let info = `[${mk}] ${nama} | ${kelas} ${aksi} | Ket: ${log.message}`;
-        if (info.length > 300) info = info.substring(0, 310) + '...';
-
-        const detail = log.type === 'failed'
-          ? `<br><small class="text-gray-400">Payload: ${JSON.stringify(disp)}</small>`
-          : '';
-
-        return `<div class="py-1">${icon} ${info} ${detail}</div>`;
-      }).join('');
-
-      if (progress.append) {
-        logEl.insertAdjacentHTML('beforeend', html);
-        // Batasi DOM — simpan 300 log terakhir saja
-        while (logEl.children.length > 300) logEl.removeChild(logEl.firstChild);
-      } else {
-        logEl.innerHTML = html;
+        const elapsedEl = document.getElementById('stat-elapsed');
+          if (elapsedEl) elapsedEl.textContent = s.elapsedText || '00:00';   // ← baru
       }
-      logEl.scrollTop = logEl.scrollHeight;
-    }
+
+      // ===== Log realtime — append incremental, batasi DOM =====
+      const logEl = document.getElementById('import-log');
+      if (logEl && progress.logs && progress.logs.length > 0) {
+        const html = progress.logs.map(log => {
+          const icon = log.type === 'success' ? '✅' : (log.type === 'failed' ? '❌' : '⚠️');
+          const row  = log.row || {};
+          const disp = row._display || {};
+
+          const mk    = disp.kode_mata_kuliah || disp.nim || row.nik || row.kode_mata_kuliah || row.id_matkul || '?';
+          const nama  = disp.nama || disp.nama_mata_kuliah || row.nama_mata_kuliah || row.nama_mahasiswa
+                        || row.nama_dosen || disp.nama_dosen || disp.nama_mahasiswa
+                        || disp.nama_evaluasi || disp.nama_komponen || '';
+          const kelas = disp.kelas || disp.nama_kelas || row.kelas || row.nama_kelas_kuliah || '?';
+          const aksi  = disp.aksi || row.tipe || currentMethod;
+
+          let info = `[${mk}] ${nama} | ${kelas} ${aksi} | Ket: ${log.message}`;
+          if (info.length > 300) info = info.substring(0, 310) + '...';
+
+          const detail = log.type === 'failed'
+            ? `<br><small class="text-gray-400">Payload: ${JSON.stringify(disp)}</small>`
+            : '';
+
+          return `<div class="py-1">${icon} ${info} ${detail}</div>`;
+        }).join('');
+
+        if (progress.append) {
+          logEl.insertAdjacentHTML('beforeend', html);
+          // Batasi DOM — simpan 300 log terakhir saja
+          while (logEl.children.length > 300) logEl.removeChild(logEl.firstChild);
+        } else {
+          logEl.innerHTML = html;
+        }
+        logEl.scrollTop = logEl.scrollHeight;
+      }
+
     }).then(async (result) => {
+
+        // Hanya invalidate jika ada perubahan nyata di server
+        if (result.success > 0) {
+          // 1. Hapus cache lama — data sudah berubah selama import
+          api.invalidateAllCache();
+        }
+        // Pulihkan persistensi untuk pemakaian normal berikutnya
+        api.persistCache = true;
+         window.__isImporting = false;  // ← tambah
+
         const logEl = document.getElementById('import-log');
         // Untuk metode yang menghasilkan banyak record (UpdateNilaiLengkap), tampilkan ringkasan
         if (currentMethod === 'UpdateNilaiLengkap' && importProcess.realtimeLogs) {

@@ -12,10 +12,29 @@ document.addEventListener('DOMContentLoaded', () => {
   // ✅ Mulai auto-cleanup setiap jam
   startAutoCleanup();
 
-  document.getElementById('cleanup-now-btn')?.addEventListener('click', () => {
+  document.getElementById("cleanup-now-btn")?.addEventListener("click", () => {
     runCleanup(true);
-    showToast('Cache & log lama dibersihkan', 'success');
-    location.reload();
+
+    let countdown = 3;
+
+    showToast(
+      `Cache & log lama dibersihkan. Reload dalam ${countdown} detik...`,
+      "success",
+    );
+
+    console.log("Cache & log lama dibersihkan.");
+
+    const timer = setInterval(() => {
+      countdown--;
+
+      if (countdown > 0) {
+        showToast(`Reload halaman dalam ${countdown} detik...`, "success");
+      } else {
+        clearInterval(timer);
+        console.log("Reloading...");
+        location.reload();
+      }
+    }, 1000);
   });
 
   const clearLogBtn = document.getElementById('clear-log-btn');
@@ -221,12 +240,11 @@ document.addEventListener('DOMContentLoaded', () => {
         showToast('Login berhasil', 'success');
         checkAuth();
       } else {
-        statusEl.textContent = '❌ Gagal login';
-        showToast('Login gagal: username atau password salah!', 'error');
+        statusEl.textContent = '❌ Login gagal: username atau password salah';
+        // showToast('Login gagal: username atau password salah', 'error');
       }
     } catch (err) {
       statusEl.textContent = '❌ Error: ' + err.message;
-      showToast('Error: ' + err.message, 'error');
     } finally {
       btnText.classList.remove('hidden');
       btnLoader.classList.add('hidden');

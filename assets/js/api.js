@@ -6,6 +6,7 @@ export class NeoFeederAPI {
     this.token = localStorage.getItem(STORAGE_KEYS.TOKEN) || '';
     this._memCache = new Map();      // ← cache di memori (hindari JSON.parse berulang)
     this._pendingFetch = new Map();  // ← dedup fetch paralel untuk key yang sama
+    this.persistCache = true;   // ← default: aktif untuk mode normal
   }
 
   setToken(token) {
@@ -23,7 +24,6 @@ export class NeoFeederAPI {
       token: this.token,
       ...params,
     };
-
 
     // ✅ Hanya log untuk operasi tulis, agar panel Aktivitas Terakhir tidak dibanjiri Get*
     const isWrite = /^(Insert|Update|Delete|Set)/.test(method);
@@ -87,8 +87,6 @@ export class NeoFeederAPI {
         throw new Error(msg);
       }
 
-      // Catat keberhasilan
-            // Catat respons mentah untuk debug
       if (DEBUG_API) {
         console.log('[API Response]', `Mendapat respons: ${method}`, { response: this.ringkasData(json) });
       }
@@ -158,20 +156,18 @@ export class NeoFeederAPI {
       // Deteksi error jaringan (server mati / port salah / API tidak aktif)
       const isNetworkError =
         error.name === 'TypeError' &&
-        (error.message.includes('Failed to fetch') ||
-        error.message.includes('NetworkError') ||
-        error.message.includes('fetch'));
+        (error.message.includes('Failed to fetch') || error.message.includes('NetworkError') || error.message.includes('fetch'));
 
       if (isNetworkError) {
-        loggerInst.log('error', `Server Off / Maintenance – tidak dapat terhubung ke ${url}`, { url });
-        if (DEBUG_API) console.warn(`[API] Server Off: ${url}`);
+        loggerInst.log('error', `API tidak aktif – tidak dapat terhubung ke ${url}`, { url });
+        console.warn(`[API SERVER] Tidak dapat terhubung ke: ${url}`);
       }
 
       // Catat kesalahan umum
       loggerInst.log('error', `Kesalahan pada ${method}: ${error.message}`);
       if (DEBUG_API) console.error(`[API] ${method} failed:`, error.message);
 
-      throw error;
+      throw new Error(`Autentikasi Token Gagal. Pastikan API Neo Feeder aktif dan dapat diakses. Detail: ${error.message}`);
 
     }
   }
@@ -240,7 +236,7 @@ export class NeoFeederAPI {
       this.setToken(res.token);
       return res;
     }
-    throw new Error('Token tidak ditemukan dalam respons');
+    throw new Error('Autentikasi Token Gagal. Pastikan username dan password benar, serta API Neo Feeder aktif.');
   }
 
   // ============ CACHE HELPER ============
@@ -248,6 +244,7 @@ export class NeoFeederAPI {
   _getCache(key) {
     // Mem-first: hindari JSON.parse berulang untuk list besar
     if (this._memCache.has(key)) return this._memCache.get(key);
+    if (!this.persistCache) return null;   // ← jangan baca disk saat import
     try {
       const raw = localStorage.getItem(`${CACHE_PREFIX}${key}`);
       if (!raw) return null;
@@ -260,6 +257,7 @@ export class NeoFeederAPI {
   _setCache(key, data, count) {
     const entry = { data, count, timestamp: Date.now() };
     this._memCache.set(key, entry);
+    if (!this.persistCache) return;    // ← skip localStorage saat import
     try {
       localStorage.setItem(`${CACHE_PREFIX}${key}`, JSON.stringify(entry));
     } catch (e) {
