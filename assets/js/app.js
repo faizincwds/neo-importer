@@ -192,7 +192,7 @@ document.addEventListener('DOMContentLoaded', () => {
       setMenuEnabled(true);
       const user = JSON.parse(localStorage.getItem(STORAGE_KEYS.USER) || '{}');
       const profil = JSON.parse(localStorage.getItem(STORAGE_KEYS.PROFIL_PT) || '{}');
-      userInfo.textContent = ` © ${profil.website || 'PT'}`;
+      userInfo.textContent = ` ${user.username || 'unknown'}`;
       initViewManager(mainContent);
     } else {
       loginView.classList.remove('hidden');

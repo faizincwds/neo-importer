@@ -4,7 +4,6 @@ import { showToast } from './utils.js';
 export function renderConfigView(container) {
   const savedUrl = localStorage.getItem(STORAGE_KEYS.API_URL) || 'http://localhost:3003';
   const savedType = localStorage.getItem(STORAGE_KEYS.API_TYPE) || 'live2.php';
-  const savedUsername = localStorage.getItem('nf_username') || '';
 
   container.innerHTML = `
     <div class="glass p-6 rounded-2xl max-w-xl mx-auto">
@@ -25,13 +24,7 @@ export function renderConfigView(container) {
             <option value="sandbox2.php" ${savedType === 'sandbox2.php' ? 'selected' : ''}>sandbox2.php (Sandbox)</option>
           </select>
         </div>
-        
-        <div>
-          <label class="block text-sm font-medium mb-2">Username (opsional, untuk login otomatis)</label>
-          <input type="text" id="config-username" class="w-full p-3 rounded-xl bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-800 dark:text-gray-100" 
-                 value="${savedUsername}" placeholder="Username Neo Feeder">
-        </div>
-        
+               
         
         <button id="config-save-btn" class="w-full py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition">
           💾 Simpan Konfigurasi

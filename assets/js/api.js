@@ -478,6 +478,286 @@ export class NeoFeederAPI {
     );
   }
 
+/**
+ * Ambil daftar status mahasiswa resmi (A, N, C, G, M, U) dari Neo Feeder.
+ * @returns {Promise<Array<{id_status_mahasiswa, nama_status_mahasiswa}>>}
+ */
+async getStatusMahasiswa(force = false) {
+  const key = 'status_mahasiswa_ref';
+  if (force) this.invalidateCache(key);
+  return this._cachedFetch(
+    key,
+    async () => {
+      const res = await this.call('GetStatusMahasiswa');
+      const arr = this.extractData(res) || [];
+      // Trim trailing spaces pada nama
+      return arr.map(s => ({
+        id_status_mahasiswa: s.id_status_mahasiswa,
+        nama_status_mahasiswa: (s.nama_status_mahasiswa || '').trim(),
+      }));
+    },
+    60 * 60 * 1000   // TTL 1 jam (data referensi statis)
+  );
+}
+
+
+/**
+ * Hitung mahasiswa berstatus Lulus atau DO.
+ * Menggunakan endpoint terpisah karena tidak termasuk GetStatusMahasiswa.
+ * @param {'Lulus'|'DO'|'Semua'} jenis
+ * @returns {Promise<number>}
+ */
+  async getCountMahasiswaLulusDO(jenis = 'Semua', force = false) {
+    const key = `count_mhs_lulusdo_${String(jenis).toLowerCase()}`;
+    if (force) this.invalidateCache(key);
+
+    return this._cachedFetch(
+      key,
+      async () => {
+        const target = String(jenis).toLowerCase();
+
+        // Map lengkap 7 jenis keluar (dari GetListMahasiswalulusDO)
+        const MAP = {
+          'nongelar':    '0',   // Selesai Pendidikan Non Gelar
+          'lulus':       '1',   // Lulus
+          'mutasi':      '2',   // Mutasi
+          'do':          '3',   // Dikeluarkan
+          'mengundurkan':'4',   // Mengajukan pengunduran diri
+          'mundur':      '4',   // alias
+          'putus':       '5',   // Putus Studi
+          'meninggal':   '6',   // Meninggal dunia
+        };
+
+        if (target === 'semua') {
+          try {
+            const res = await this.call('GetCountMahasiswaLulusDO', {});
+            if (res?.error_code === 0) {
+              const n = parseInt(res.data ?? res.jumlah, 10);
+              if (!isNaN(n)) return n;
+            }
+          } catch (e) {}
+          return null;
+        }
+
+        const idJenis = MAP[target];
+        if (!idJenis) return null;
+
+        try {
+          const res = await this.call('GetCountMahasiswaLulusDO', {
+            filter: `id_jenis_keluar='${idJenis}'`
+          });
+          if (res?.error_code === 0) {
+            const n = parseInt(res.data ?? res.jumlah, 10);
+            if (!isNaN(n)) return n;
+          }
+        } catch (e) {
+          if (DEBUG_API) console.warn(`[Lulus/DO] ${jenis} gagal:`, e.message);
+        }
+
+        return null;
+      },
+      5 * 60 * 1000
+    );
+  }
+
+  /**
+   * Ambil semester aktif (a_periode_aktif='1').
+   */
+  async getSemesterAktif(force = false) {
+    const key = 'semester_aktif';
+    if (force) this.invalidateCache(key);
+    return this._cachedFetch(key, async () => {
+      const res = await this.call('GetSemester', {
+        filter: "a_periode_aktif='1'",
+        limit: 1
+      });
+      const list = this.extractData(res) || [];
+      const arr = Array.isArray(list) ? list : (list?.data || []);
+      return arr[0] || null;
+    }, 30 * 60 * 1000);
+  }
+
+  /**
+ * Cari semester sebelumnya (id_semester < idSemesterAktif, terbesar).
+ * Contoh: jika aktif = '20261', return semester '20252'.
+ */
+async getSemesterSebelumnya(idSemesterAktif, force = false) {
+  if (!idSemesterAktif) return null;
+  const key = `semester_sebelumnya_${idSemesterAktif}`;
+  if (force) this.invalidateCache(key);
+
+  return this._cachedFetch(key, async () => {
+    const res = await this.call('GetSemester', {});
+    const list = this.extractData(res) || [];
+    const arr = Array.isArray(list) ? list : (list?.data || []);
+
+    // Helper: cek apakah semester adalah "Pendek/Antara" (skip)
+    const isPendek = (s) => {
+      const id = String(s.id_semester || '');
+      const nama = String(s.nama_semester || '').toLowerCase();
+      // Digit terakhir '3' = pendek, atau nama mengandung "pendek"/"antara"
+      return id.endsWith('3') || nama.includes('pendek') || nama.includes('antara');
+    };
+
+    // Filter: id < aktif, BUKAN pendek, lalu urutkan descending
+    const sorted = arr
+      .filter(s =>
+        s.id_semester &&
+        String(s.id_semester) < String(idSemesterAktif) &&
+        !isPendek(s)                                    // ← skip pendek
+      )
+      .sort((a, b) => String(b.id_semester).localeCompare(String(a.id_semester)));
+
+    if (DEBUG_API) {
+      console.log(`[Semester] Aktif: ${idSemesterAktif}, sebelumnya (non-pendek):`,
+        sorted.slice(0, 3).map(s => `${s.id_semester} (${s.nama_semester})`));
+    }
+
+    return sorted[0] || null;
+  }, 30 * 60 * 1000);
+
+}
+
+/**
+ * Ambil daftar semester sebelum `idSemesterAktif`, urut dari yang paling dekat.
+ * TERMASUK semester pendek/antara (akan ditandai `isPendek: true`).
+ * @param {string} idSemesterAktif - mis. '20261'
+ * @param {number} maxCount - berapa kandidat (default 6, termasuk pendek)
+ * @returns {Promise<Array<{id_semester, nama_semester, isPendek}>>}
+ */
+async getSemesterListBefore(idSemesterAktif, maxCount = 3, force = false) {
+  if (!idSemesterAktif) return [];
+  const key = `semester_list_before_all_${idSemesterAktif}_${maxCount}`;
+  if (force) this.invalidateCache(key);
+
+  return this._cachedFetch(key, async () => {
+    const res = await this.call('GetSemester', {});
+    const list = this.extractData(res) || [];
+    const arr = Array.isArray(list) ? list : (list?.data || []);
+
+    const isPendek = (s) => {
+      const id = String(s.id_semester || '');
+      const nama = String(s.nama_semester || '').toLowerCase();
+      return id.endsWith('3') || nama.includes('pendek') || nama.includes('antara');
+    };
+
+    // Tidak ada filter pendek — semua semester sebelum aktif jadi kandidat
+    return arr
+      .filter(s => s.id_semester && String(s.id_semester) < String(idSemesterAktif))
+      .sort((a, b) => String(b.id_semester).localeCompare(String(a.id_semester)))
+      .slice(0, maxCount)
+      .map(s => ({
+        id_semester: s.id_semester,
+        nama_semester: s.nama_semester,
+        isPendek: isPendek(s),
+      }));
+  }, 30 * 60 * 1000);
+}
+
+
+
+  /**
+   * Ambil aktivitas kuliah mahasiswa (per semester).
+   * @param {object} filter - { id_semester, id_status_mahasiswa, id_registrasi_mahasiswa }
+   */
+  async getAktivitasKuliahMahasiswa(filter = {}, force = false) {
+    const conditions = [];
+    if (filter.id_semester) conditions.push(`id_semester='${filter.id_semester}'`);
+    if (filter.id_status_mahasiswa) conditions.push(`id_status_mahasiswa='${filter.id_status_mahasiswa}'`);
+    if (filter.id_registrasi_mahasiswa) conditions.push(`id_registrasi_mahasiswa='${filter.id_registrasi_mahasiswa}'`);
+    const filterStr = conditions.join(' AND ');
+    const params = { limit: 10000 };
+    if (filterStr) params.filter = filterStr;
+
+    const key = `aktivitas_kuliah_${filterStr || 'all'}`;
+    if (force) this.invalidateCache(key);
+
+    return this._cachedFetch(key, async () => {
+      const res = await this.call('GetAktivitasKuliahMahasiswa', params);
+      return this.extractData(res);
+    }, 5 * 60 * 1000);
+  }
+
+  /**
+   * Hitung distribusi mahasiswa per status (A/N/C/G/M/U)
+   * dari GetAktivitasKuliahMahasiswa pada semester aktif.
+   * @returns {Promise<Object>} { A: 149, N: 0, C: 0, G: 0, M: 0, U: 0 }
+   */
+  // async getStatusMahasiswaCounts(force = false) {
+  //   const key = 'status_mhs_dist';
+  //   if (force) this.invalidateCache(key);
+
+  //   return this._cachedFetch(key, async () => {
+  //     const semester = await this.getSemesterAktif();
+  //     const idSem = semester?.id_semester;
+
+  //     if (DEBUG_API) console.log('[Status] Semester aktif:', idSem);
+
+  //     const filter = idSem ? { id_semester: idSem } : {};
+  //     const list = await this.getAktivitasKuliahMahasiswa(filter);
+  //     const arr = Array.isArray(list) ? list : (list?.data || []);
+
+  //     // Dedupe by id_registrasi_mahasiswa — 1 mahasiswa = 1 hitungan
+  //     const seen = new Map();
+  //     for (const m of arr) {
+  //       const regId = m.id_registrasi_mahasiswa || m.id_mahasiswa;
+  //       if (!regId) continue;
+  //       if (!seen.has(regId)) {
+  //         seen.set(regId, String(m.id_status_mahasiswa ?? 'unknown').trim().toUpperCase());
+  //       }
+  //     }
+
+  //     const dist = {};
+  //     for (const status of seen.values()) {
+  //       dist[status] = (dist[status] || 0) + 1;
+  //     }
+
+  //     if (DEBUG_API) console.log('[Status] Distribusi:', dist, `(total unik: ${seen.size})`);
+  //     return dist;
+  //   }, 5 * 60 * 1000);
+  // }
+
+  /**
+ * Hitung distribusi mahasiswa per status (A/N/C/G/M/U)
+ * dari GetAktivitasKuliahMahasiswa pada semester tertentu.
+ * @param {string} idSemester - mis. '20261'. Jika null → pakai semester aktif.
+ * @returns {Promise<Object>} { A: 21, N: 22, C: 0, G: 0, M: 0, U: 0 }
+ */
+async getStatusMahasiswaCounts(idSemester = null, force = false) {
+  const semKey = idSemester || 'aktif';
+  const key = `status_mhs_dist_${semKey}`;
+  if (force) this.invalidateCache(key);
+
+  return this._cachedFetch(key, async () => {
+    let idSem = idSemester;
+    if (!idSem) {
+      const semester = await this.getSemesterAktif();
+      idSem = semester?.id_semester;
+    }
+    if (!idSem) return {};
+
+    if (DEBUG_API) console.log('[Status] Menghitung semester:', idSem);
+
+    const list = await this.getAktivitasKuliahMahasiswa({ id_semester: idSem });
+    const arr = Array.isArray(list) ? list : (list?.data || []);
+
+    const seen = new Map();
+    for (const m of arr) {
+      const regId = m.id_registrasi_mahasiswa || m.id_mahasiswa;
+      if (!regId) continue;
+      if (!seen.has(regId)) {
+        seen.set(regId, String(m.id_status_mahasiswa ?? 'unknown').trim().toUpperCase());
+      }
+    }
+    const dist = {};
+    for (const status of seen.values()) {
+      dist[status] = (dist[status] || 0) + 1;
+    }
+    if (DEBUG_API) console.log(`[Status] Semester ${idSem}:`, dist, `(total unik: ${seen.size})`);
+    return dist;
+  }, 5 * 60 * 1000);
+}
+
   async getListKelasKuliah(filter = {}) {
     const conditions = [];
     if (filter.id_semester) conditions.push(`id_semester = '${filter.id_semester}'`);

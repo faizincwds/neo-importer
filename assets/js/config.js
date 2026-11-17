@@ -1,4 +1,4 @@
-export const DEBUG_API = false; // true untuk menampilkan log API di console
+export const DEBUG_API = true; // true untuk menampilkan log API di console
 export const API_BASE = localStorage.getItem('nf_api_url') || 'http://localhost:3003';
 export const API_TYPE = localStorage.getItem('nf_api_type') || 'live2.php';
 
