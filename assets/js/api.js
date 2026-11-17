@@ -618,43 +618,75 @@ async getSemesterSebelumnya(idSemesterAktif, force = false) {
 
 }
 
-/**
- * Ambil daftar semester sebelum `idSemesterAktif`, urut dari yang paling dekat.
- * TERMASUK semester pendek/antara (akan ditandai `isPendek: true`).
- * @param {string} idSemesterAktif - mis. '20261'
- * @param {number} maxCount - berapa kandidat (default 6, termasuk pendek)
- * @returns {Promise<Array<{id_semester, nama_semester, isPendek}>>}
- */
-async getSemesterListBefore(idSemesterAktif, maxCount = 3, force = false) {
-  if (!idSemesterAktif) return [];
-  const key = `semester_list_before_all_${idSemesterAktif}_${maxCount}`;
-  if (force) this.invalidateCache(key);
+  /**
+   * Ambil daftar semester sebelum `idSemesterAktif`, urut dari yang paling dekat.
+   * TERMASUK semester pendek/antara (akan ditandai `isPendek: true`).
+   * @param {string} idSemesterAktif - mis. '20261'
+   * @param {number} maxCount - berapa kandidat (default 6, termasuk pendek)
+   * @returns {Promise<Array<{id_semester, nama_semester, isPendek}>>}
+   */
+  async getSemesterListBefore(idSemesterAktif, maxCount = 3, force = false) {
+    if (!idSemesterAktif) return [];
+    const key = `semester_list_before_all_${idSemesterAktif}_${maxCount}`;
+    if (force) this.invalidateCache(key);
 
-  return this._cachedFetch(key, async () => {
-    const res = await this.call('GetSemester', {});
-    const list = this.extractData(res) || [];
-    const arr = Array.isArray(list) ? list : (list?.data || []);
+    return this._cachedFetch(key, async () => {
+      const res = await this.call('GetSemester', {});
+      const list = this.extractData(res) || [];
+      const arr = Array.isArray(list) ? list : (list?.data || []);
 
-    const isPendek = (s) => {
-      const id = String(s.id_semester || '');
-      const nama = String(s.nama_semester || '').toLowerCase();
-      return id.endsWith('3') || nama.includes('pendek') || nama.includes('antara');
-    };
+      const isPendek = (s) => {
+        const id = String(s.id_semester || '');
+        const nama = String(s.nama_semester || '').toLowerCase();
+        return id.endsWith('3') || nama.includes('pendek') || nama.includes('antara');
+      };
 
-    // Tidak ada filter pendek — semua semester sebelum aktif jadi kandidat
-    return arr
-      .filter(s => s.id_semester && String(s.id_semester) < String(idSemesterAktif))
-      .sort((a, b) => String(b.id_semester).localeCompare(String(a.id_semester)))
-      .slice(0, maxCount)
-      .map(s => ({
-        id_semester: s.id_semester,
-        nama_semester: s.nama_semester,
-        isPendek: isPendek(s),
-      }));
-  }, 30 * 60 * 1000);
-}
+      // Tidak ada filter pendek — semua semester sebelum aktif jadi kandidat
+      return arr
+        .filter(s => s.id_semester && String(s.id_semester) < String(idSemesterAktif))
+        .sort((a, b) => String(b.id_semester).localeCompare(String(a.id_semester)))
+        .slice(0, maxCount)
+        .map(s => ({
+          id_semester: s.id_semester,
+          nama_semester: s.nama_semester,
+          isPendek: isPendek(s),
+        }));
+    }, 30 * 60 * 1000);
+  }
 
+  /**
+   * Ambil Set id_mahasiswa dari GetAktivitasKuliahMahasiswa per semester.
+   * Untuk intersection presisi (bukan sekadar total).
+   */
+  async getMahasiswaIdsBySemester(idSemester, force = false) {
+    const key = `mhs_ids_${idSemester}`;
+    if (force) this.invalidateCache(key);
 
+    return this._cachedFetch(key, async () => {
+      const list = await this.getAktivitasKuliahMahasiswa({ id_semester: idSemester });
+      const arr = Array.isArray(list) ? list : (list?.data || []);
+      const ids = new Set();
+      for (const m of arr) {
+        const id = m.id_mahasiswa || m.id_registrasi_mahasiswa;
+        if (id) ids.add(id);
+      }
+      return [...ids];   // array (bisa di-serialize)
+    }, 5 * 60 * 1000);
+  }
+
+  /**
+   * Ambil data lengkap aktivitas kuliah mahasiswa (untuk daftar/modal).
+   * @param {string} idSemester
+   */
+  async getAktivitasKuliahDetail(idSemester, force = false) {
+    if (!idSemester) return [];
+    const key = `mhs_aktivitas_detail_${idSemester}`;
+    if (force) this.invalidateCache(key);
+    return this._cachedFetch(key, async () => {
+      const list = await this.getAktivitasKuliahMahasiswa({ id_semester: idSemester });
+      return Array.isArray(list) ? list : (list?.data || []);
+    }, 5 * 60 * 1000);
+  }
 
   /**
    * Ambil aktivitas kuliah mahasiswa (per semester).
