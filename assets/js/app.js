@@ -2,10 +2,7 @@ import { isLoggedIn, handleLogin, logout } from './auth.js';
 import { initViewManager } from './viewManager.js';
 import { showToast } from './utils.js';
 import { STORAGE_KEYS } from './config.js';
-import { startAutoCleanup } from './cleanup.js';
-import { runCleanup } from './cleanup.js';
-
-import { log, loggerInst } from './loggerView.js';
+import { startAutoCleanup, runCleanup } from './cleanup.js';
 
 document.addEventListener('DOMContentLoaded', () => {
 
@@ -15,23 +12,18 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById("cleanup-now-btn")?.addEventListener("click", () => {
     runCleanup(true);
 
+    showToast('Cache & log dibersihkan. Reload dalam 3 detik...', 'success');
+
     let countdown = 3;
-
-    showToast(
-      `Cache & log lama dibersihkan. Reload dalam ${countdown} detik...`,
-      "success",
-    );
-
-    console.log("Cache & log lama dibersihkan.");
-
     const timer = setInterval(() => {
       countdown--;
-
       if (countdown > 0) {
-        showToast(`Reload halaman dalam ${countdown} detik...`, "success");
+        // Cari toast yang masih aktif, update text-nya
+        const toasts = document.querySelectorAll('.toast');
+        const last = toasts[toasts.length - 1];
+        if (last) last.textContent = `Reload dalam ${countdown} detik...`;
       } else {
         clearInterval(timer);
-        console.log("Reloading...");
         location.reload();
       }
     }, 1000);
@@ -66,16 +58,20 @@ document.addEventListener('DOMContentLoaded', () => {
   function toggleLogPanel() {
     logWrapper.classList.toggle('log-collapsed');
   }
-  logToggleHeader.addEventListener('click', toggleLogPanel);
+
+ if (logToggleHeader) {
+    logToggleHeader.addEventListener('click', toggleLogPanel);
+  }
   if (logChevron) {
     logChevron.addEventListener('click', (e) => {
-      e.stopPropagation(); // agar tidak memicu dua kali
+      e.stopPropagation();
       toggleLogPanel();
     });
   }
 
   // Fungsi update jumlah log (panggil setiap kali log bertambah)
   function updateLogCount() {
+    if (!logBody) return;
     const entries = logBody.querySelectorAll('.log-entry, div[class*="py-1"]').length;
     if (logCountSpan) logCountSpan.textContent = `(${entries})`;
   }
@@ -89,6 +85,15 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   loggerInst.init();
+  window.addEventListener('beforeunload', () => {
+    loggerInst.flush?.();
+  });
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+      loggerInst.flush?.();
+    }
+  });
 
   if (clearLogBtn) {
     clearLogBtn.addEventListener('click', () => {
@@ -191,7 +196,6 @@ document.addEventListener('DOMContentLoaded', () => {
       logoutBtn.classList.remove('hidden');
       setMenuEnabled(true);
       const user = JSON.parse(localStorage.getItem(STORAGE_KEYS.USER) || '{}');
-      const profil = JSON.parse(localStorage.getItem(STORAGE_KEYS.PROFIL_PT) || '{}');
       userInfo.textContent = ` ${user.username || 'unknown'}`;
       initViewManager(mainContent);
     } else {
@@ -205,7 +209,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // ===== 6. Tombol Login =====
-
+if (loginBtn) {
   loginBtn.addEventListener('click', async () => {
     const apiUrlInput  = document.getElementById('api-url');
     const apiTypeInput  = document.getElementById('api-type');
@@ -238,7 +242,10 @@ document.addEventListener('DOMContentLoaded', () => {
       if (success) {
         statusEl.textContent = '✅ Connected';
         showToast('Login berhasil', 'success');
-        checkAuth();
+        checkAuth().catch(err => {
+          console.error('checkAuth gagal:', err);
+          showToast('Gagal inisialisasi: ' + err.message, 'error');
+        });
       } else {
         statusEl.textContent = '❌ Login gagal: username atau password salah';
         // showToast('Login gagal: username atau password salah', 'error');
@@ -251,14 +258,19 @@ document.addEventListener('DOMContentLoaded', () => {
       loginBtn.disabled = false;
     }
   });
+}
 
+if (logoutBtn) {
   // ===== 7. Tombol Logout =====
   logoutBtn.addEventListener('click', () => {
     logout();
     showToast('Logged out', 'info');
     checkAuth();
   });
+}
 
   // ===== 8. Inisialisasi =====
-  checkAuth();
+  checkAuth().catch(err => console.error('checkAuth:', err));
+  
+
 });

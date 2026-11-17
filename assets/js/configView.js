@@ -7,7 +7,7 @@ export function renderConfigView(container) {
 
   container.innerHTML = `
     <div class="glass p-6 rounded-2xl max-w-xl mx-auto">
-      <h2 class="text-2xl font-bold mb-6">⚙️ Konfigurasi API Feeder</h2>
+      <h2 class="text-2xl font-bold mb-6"><i class="fas fa-cog"></i> Konfigurasi API Feeder</h2>
       
       <div class="space-y-4">
         <div>
@@ -27,7 +27,7 @@ export function renderConfigView(container) {
                
         
         <button id="config-save-btn" class="w-full py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition">
-          💾 Simpan Konfigurasi
+          <i class="fas fa-save"></i> Simpan Konfigurasi
         </button>
       </div>
     </div>

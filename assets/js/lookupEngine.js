@@ -202,17 +202,28 @@ export class LookupEngine {
     const key = `semester_${clean}`;
     return this._getOrFetch(key, async () => {
       try {
-        const res = await this.api.call('GetSemester', { filter: `a_periode_aktif='1'` });
-        const list = this.api.extractData(res) || [];
-        const found = list.find(s => s.id_semester == clean);
+        // Pakai api.getSemester() yang sudah di-cache (bukan api.call langsung)
+        const list = await this.api.getSemester();
+        const arr = Array.isArray(list) ? list : (list?.data || []);
+        const found = arr.find(s => String(s.id_semester).trim() === clean);
         if (found) {
-          return { id_semester: found.id_semester, _raw: found };
+          return {
+            id_semester: found.id_semester,
+            nama_semester: found.nama_semester,
+            _raw: found
+          };
         }
+        // Semester baru yang belum ada di list — hanya izinkan jika format valid
+        if (/^\d{4,5}$/.test(clean)) {
+          if (DEBUG_API) console.warn(`[Semester] ${clean} tidak ada di list, fallback ke kode mentah`);
+          return { id_semester: clean, _raw: {} };
+        }
+        // Format tidak valid → return null (caller akan set error)
+        return null;
       } catch (e) {
-        console.warn('Lookup semester gagal, gunakan kodePeriode sebagai fallback', e);
+        console.warn('Lookup semester gagal:', e);
+        return null;
       }
-      // Fallback: kembalikan kodePeriode apa adanya
-      return { id_semester: clean, _raw: {} };
     });
   }
 
@@ -282,21 +293,34 @@ export class LookupEngine {
 
   async lookupRegistrasiMahasiswa(nim) {
     if (!nim) return null;
-    const key = `registrasi_mhs_${nim}`;
+    const clean = String(nim).trim();
+    const key = `registrasi_mhs_${clean}`;
     return this._getOrFetch(key, async () => {
-      const list = await this.api.getListRiwayatPendidikanMahasiswa({ nim: nim.trim() });
-      const arr = Array.isArray(list) ? list : (list?.data || []);
-      const found = arr[0];
-      if (found && found.id_registrasi_mahasiswa) {
-        return {
-          id_registrasi_mahasiswa: found.id_registrasi_mahasiswa,
-          id_mahasiswa: found.id_mahasiswa || '',
-          nama_mahasiswa: found.nama_mahasiswa || '',
-          nim: found.nim || nim,
-          _raw: found
-        };
+      try {
+        // Fetch SEMUA riwayat sekali, lalu filter lokal (bukan API call per NIM)
+        const arr = await this._getOrFetch('__all_riwayat_pendidikan', async () => {
+          const res = await this.api.call('GetListRiwayatPendidikanMahasiswa', {});
+          const data = this.api.extractData(res);
+          return Array.isArray(data) ? data : (data?.data || []);
+        });
+
+        if (!Array.isArray(arr)) return null;
+
+        const found = arr.find(r => String(r.nim || '').trim() === clean);
+        if (found && found.id_registrasi_mahasiswa) {
+          return {
+            id_registrasi_mahasiswa: found.id_registrasi_mahasiswa,
+            id_mahasiswa: found.id_mahasiswa || '',
+            nama_mahasiswa: found.nama_mahasiswa || '',
+            nim: found.nim || clean,
+            _raw: found
+          };
+        }
+        return null;
+      } catch (e) {
+        console.warn('[Registrasi] gagal:', e);
+        return null;
       }
-      return null;
     });
   }
 
@@ -415,6 +439,8 @@ export class LookupEngine {
       }
     } catch (e) {
       console.warn(`Lookup referensi ${method} gagal:`, e);
+      if (!row.__errors) row.__errors = {};
+      row.__errors[fieldNama] = `Gagal lookup "${nama}": ${e.message || 'error jaringan'}`;
     }
   }
 

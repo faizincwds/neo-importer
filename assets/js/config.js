@@ -46,6 +46,14 @@ export const CACHE_TTL = {
   wilayah:    7 * 24 * 60 * 60 * 1000,  // 7 hari
   kategori_kegiatan: 24 * 60 * 60 * 1000,
   jenis_aktivitas: 24 * 60 * 60 * 1000,
+  // tambahan untuk cache baru
+  aktivitas_kuliah: 5 * 60 * 1000,
+  mhs_aktivitas_detail: 5 * 60 * 1000,
+  status_mhs_dist: 5 * 60 * 1000,
+  semester_sebelumnya: 30 * 60 * 1000,
+  semester_list_before: 30 * 60 * 1000,
+  count_mhs_status: 5 * 60 * 1000,
+  count_mhs_lulusdo: 5 * 60 * 1000,
 };
 
 

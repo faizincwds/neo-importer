@@ -17,10 +17,16 @@ const DEFAULT_TTL = 24 * 60 * 60 * 1000;
  * Contoh: 'wilayah_3' → cari CACHE_TTL.wilayah
  */
 function getCacheTtlByKey(cacheKey) {
-  // Cek utuh dulu (mis. 'jenis_tinggal'), baru prefix (mis. 'wilayah_3')
+  // Cek utuh dulu
   if (CACHE_TTL[cacheKey]) return CACHE_TTL[cacheKey];
-  const base = cacheKey.split('_')[0];
-  return CACHE_TTL[base] || CACHE_TTL[cacheKey] || DEFAULT_TTL;
+  
+  // Cek prefix terpanjang dulu (dari 2-3 kata), baru 1 kata
+  const parts = cacheKey.split('_');
+  for (let i = parts.length; i >= 1; i--) {
+    const prefix = parts.slice(0, i).join('_');
+    if (CACHE_TTL[prefix]) return CACHE_TTL[prefix];
+  }
+  return DEFAULT_TTL;
 }
 
 /**
@@ -88,14 +94,15 @@ export function cleanOldLogs() {
 
     const cutoff = Date.now() - LOG_MAX_AGE;
     const filtered = logs.filter(l => {
-      const t = Date.parse(l.timestamp);
+      const t = new Date(l.timestamp).getTime();   // works untuk number, string, Date
       return !isNaN(t) && t >= cutoff;
     });
 
     if (filtered.length !== logs.length) {
-      localStorage.setItem(STORAGE_KEYS.LOGS, JSON.stringify(filtered));
-      if (DEBUG_API) {
-        console.log(`[Cleanup] Log lama dihapus: ${logs.length - filtered.length} entri`);
+      try {
+        localStorage.setItem(LAST_CLEANUP_KEY, String(now));
+      } catch (e) {
+        if (DEBUG_API) console.warn('[Cleanup] Gagal simpan LAST_CLEANUP_KEY:', e);
       }
     }
     return logs.length - filtered.length;
@@ -144,11 +151,13 @@ let intervalId = null;
  */
 export function startAutoCleanup() {
   runCleanup(false);
-
   if (intervalId) clearInterval(intervalId);
-  intervalId = setInterval(() => {
-    runCleanup(false);
-  }, CLEANUP_INTERVAL);
+  intervalId = setInterval(() => { runCleanup(false); }, CLEANUP_INTERVAL);
+
+  // Jaga-jaga kalau ada reload
+  // window.addEventListener('beforeunload', () => {
+  //   if (intervalId) clearInterval(intervalId);
+  // }, { once: true });
 }
 
 /**

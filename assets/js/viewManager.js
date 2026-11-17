@@ -7,7 +7,7 @@ import { renderUpdateView } from './updateWizard.js';
 
 export function initViewManager(mainContent) {
   const navButtons = document.querySelectorAll('#sidebar-nav .nav-btn');
-  // ✅ SIMPAN DULU kotak log sebelum membersihkan isi
+  // SIMPAN DULU kotak log sebelum membersihkan isi
   const logWrapper = document.getElementById('activity-log-wrapper');
 
   async function loadView(viewName) {

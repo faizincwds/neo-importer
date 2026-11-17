@@ -2200,7 +2200,8 @@ export function renderInsertView(container) {
       }
 
     }).then(async (result) => {
-
+        
+         window.__isImporting = false;  // ← tambah
         // Hanya invalidate jika ada perubahan nyata di server
         if (result.success > 0) {
           // 1. Hapus cache lama — data sudah berubah selama import
@@ -2208,7 +2209,6 @@ export function renderInsertView(container) {
         }
         // Pulihkan persistensi untuk pemakaian normal berikutnya
         api.persistCache = true;
-         window.__isImporting = false;  // ← tambah
 
         const logEl = document.getElementById('import-log');
         // Untuk metode yang menghasilkan banyak record (UpdateNilaiLengkap), tampilkan ringkasan

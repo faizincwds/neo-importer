@@ -113,6 +113,7 @@ body {
 .nav-btn:hover {
   background: var(--color-bg-th);
 }
+
 .nav-btn.active {
   background: linear-gradient(135deg, #3b82f6, #2563eb);
   color: white;

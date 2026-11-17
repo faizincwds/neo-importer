@@ -193,7 +193,7 @@ export async function renderDashboard(container) {
   container.innerHTML = `
   <h2 class="text-2xl font-bold mb-6">Dashboard</h2>
 
-  <div id="api-status" class=" text-white mb-6 px-4 py-2 rounded-xl inline-flex items-center shadow-sm dark:bg-gray-800 ">
+  <div id="api-status" class=" text-white mb-6 px-4 py-2 rounded-xl inline-flex items-center shadow-sm bg-gray-100 dark:bg-gray-800 ">
     <span id="api-dot" class="inline-block w-3 h-3 rounded-full mr-2 bg-yellow-400 animate-pulse"></span>
     <span id="api-text" class="text-sm text-white font-medium dark:text-gray-400">Memeriksa koneksi...</span>
     <span class="ml-2 text-xs text-gray-200 dark:text-gray-500">(${localStorage.getItem(STORAGE_KEYS.API_URL) || 'http://localhost:3003'} [${localStorage.getItem(STORAGE_KEYS.API_TYPE) || 'Yang belum dikonfigurasi'}])</span>

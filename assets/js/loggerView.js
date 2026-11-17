@@ -1,37 +1,19 @@
 import { STORAGE_KEYS } from './config.js';
 import { Logger } from './logger.js';
 
-
-
-// log(tingkat, pesan_utama, [data_tambahan_opsional]);
-// Informasi biasa
-// log('info', 'Mulai memproses berkas...');
-
-// Berhasil, sertakan data ringkas
-// log('success', 'Data berhasil disimpan', { jumlah: 12, waktu: '2 detik' });
-
-// Peringatan
-// log('warning', 'Ada 3 baris yang dilewati karena duplikat');
-
-// Kesalahan, sertakan objek error
-// try {
-  // ... proses ...
-// } catch (err) {
-//   log('error', 'Gagal terhubung ke API', err.message);
-// }
-
-// Khusus panggilan API
-// log('api', 'Respon daftar Prodi', dataDariServer);
-
+// ============================================================
+// LoggerUI — turunan Logger dengan rendering ke DOM
+// ============================================================
 export class LoggerUI extends Logger {
-  constructor() {
-    super(); // Warisi semua fungsi penyimpanan
-    this.el = null;
-  }
+  // TIDAK mendefinisikan constructor:
+  // parent (Logger) sudah handle parse localStorage,
+  // init logs, _dirty, _flushTimer, dan _trimIfNeeded.
 
   init() {
     this.el = document.getElementById('activity-log');
-    if (!this.el) console.warn('[Logger] Elemen #activity-log tidak ditemukan');
+    if (!this.el) {
+      console.warn('[Logger] Elemen #activity-log tidak ditemukan');
+    }
   }
 
   log(level, message, details = null) {
@@ -53,7 +35,7 @@ export class LoggerUI extends Logger {
       baris.innerHTML = `
         <div class="log-toggle" onclick="loggerInst.toggleDetail('${idUnik}', this)">
           <i class="fa-solid fa-chevron-right"></i>
-          <span><span class="log-time">${waktu}</span> ${message}</span>
+          <span><span class="log-time">${waktu}</span> ${this._escapeHtml(message)}</span>
         </div>
         <div id="${idUnik}" class="log-detail">
           <button class="btn-copy" onclick="event.stopPropagation(); loggerInst.salin(this)">
@@ -63,10 +45,13 @@ export class LoggerUI extends Logger {
         </div>
       `;
     } else {
-      baris.innerHTML = `<span class="log-time">${waktu}</span> ${message}`;
+      baris.innerHTML = `<span class="log-time">${waktu}</span> ${this._escapeHtml(message)}`;
     }
 
+    // Hapus placeholder "Siap memproses..." jika ada
     this.el.querySelector('.text-center')?.remove();
+
+    // Baru di atas
     this.el.prepend(baris);
     this.el.scrollTop = 0;
   }
@@ -75,8 +60,8 @@ export class LoggerUI extends Logger {
     const kotak = document.getElementById(id);
     const ikon = tombol.querySelector('i');
     kotak?.classList.toggle('show');
-    ikon.classList.toggle('fa-chevron-right');
-    ikon.classList.toggle('fa-chevron-down');
+    ikon?.classList.toggle('fa-chevron-right');
+    ikon?.classList.toggle('fa-chevron-down');
   }
 
   salin(tombol) {
@@ -92,7 +77,10 @@ export class LoggerUI extends Logger {
   }
 
   _escapeHtml(teks) {
-    return teks.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return String(teks)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
   }
 
   clearLogs() {
@@ -103,11 +91,14 @@ export class LoggerUI extends Logger {
   }
 }
 
-// Instansi utama yang dipakai seluruh aplikasi
+// ============================================================
+// Instance utama untuk seluruh aplikasi
+// ============================================================
 export const loggerInst = new LoggerUI();
 
-// Alias singkat agar kode lama tetap berjalan
-export const log = (tingkat, pesan, rincian = null) => loggerInst.log(tingkat, pesan, rincian);
+// Alias agar kode lama tetap jalan
+export const log = (tingkat, pesan, rincian = null) =>
+  loggerInst.log(tingkat, pesan, rincian);
 
-// Jadikan bisa diakses secara global untuk atribut onclick
+// Expose ke window untuk onclick inline di HTML
 window.loggerInst = loggerInst;

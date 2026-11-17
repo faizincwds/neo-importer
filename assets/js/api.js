@@ -1060,10 +1060,10 @@ async getStatusMahasiswaCounts(idSemester = null, force = false) {
       loggerInst.log('info', '🔍 Cek riwayat mahasiswa:', riwayatAda ? 'sudah ada' : 'belum ada');
       if (riwayatAda) {
         if (DEBUG_API) console.log('⏭️ Riwayat sudah ada, tidak perlu insert lagi');
-        loggerInst.log('info', 'Riwayat sudah ada, tidak perlu insert', { id_mahasiswa });
+          loggerInst.log('info', '⏭️ Riwayat sudah ada, tidak perlu insert lagi', { id_mahasiswa });
         return {
           skipped: true,
-          message: 'Riwayat sudah ada, tidak perlu insert',
+          message: '⏭️ Riwayat sudah ada, tidak perlu insert lagi',
           id_mahasiswa,
           _display: payload._display || { nama: payload.biodata?.nama_mahasiswa, nim: payload.riwayat?.nim }
         };

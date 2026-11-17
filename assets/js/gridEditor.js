@@ -1,21 +1,37 @@
+// ============================================================
+// HTML escape utility
+// ============================================================
+function escapeHtml(s) {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 export class GridEditor {
   constructor(container, fields, data, mapping, callbacks = {}) {
     this.container = container;
     this.fields = fields;
-    this.data = data;              // array penuh (semua baris)
+    this.data = data;
     this.mapping = mapping;
     this.callbacks = callbacks;
-    this.selectedRows = new Set(); // index GLOBAL (posisi di this.data)
+    this.selectedRows = new Set();
     this.pageSize = 50;
     this.currentPage = 1;
-    this.searchQuery = '';         // query pencarian aktif
+    this.searchQuery = '';
     this.errorOnly = false;
+
+    // Cache hasil filter per render
+    this._filteredCache = null;
+    this._filteredCacheKey = '';
 
     this._buildLayout();
     this.renderTable();
   }
 
-  // ---------- LAYOUT (dibuat sekali, tidak ikut re-render) ----------
+  // ---------- LAYOUT ----------
   _buildLayout() {
     this.container.innerHTML = `
       <div class="grid-toolbar mb-3 flex flex-wrap items-center gap-2">
@@ -61,23 +77,22 @@ export class GridEditor {
     this.totalInfo = this.container.querySelector('.grid-total');
     this.pageInfo = this.container.querySelector('.grid-page-info');
     this.errorFilterBtn = this.container.querySelector('.grid-error-filter');
-    
+
     this.errorFilterBtn.addEventListener('click', () => {
       this.errorOnly = !this.errorOnly;
       this.currentPage = 1;
+      this._filteredCache = null;
       this._updateErrorFilterButton();
       this.renderTable();
     });
 
-     
-
-    // Debounce pencarian 200 ms agar tidak render tiap ketukan
     let timer;
     this.searchInput.addEventListener('input', (e) => {
       clearTimeout(timer);
       timer = setTimeout(() => {
         this.searchQuery = e.target.value || '';
         this.currentPage = 1;
+        this._filteredCache = null;
         this.clearBtn.classList.toggle('hidden', !this.searchQuery);
         this.renderTable();
       }, 200);
@@ -87,6 +102,7 @@ export class GridEditor {
       this.searchInput.value = '';
       this.searchQuery = '';
       this.currentPage = 1;
+      this._filteredCache = null;
       this.clearBtn.classList.add('hidden');
       this.renderTable();
     });
@@ -111,36 +127,45 @@ export class GridEditor {
     });
   }
 
-   _updateErrorFilterButton() {
-      if (!this.errorFilterBtn) return;
-      if (this.errorOnly) {
-        this.errorFilterBtn.textContent = '✅ Tampilkan Semua';
-        this.errorFilterBtn.classList.add('bg-red-500', 'text-white');
-        this.errorFilterBtn.classList.remove('bg-red-100', 'text-red-700', 'dark:bg-red-900/40', 'dark:text-red-300');
-      } else {
-        this.errorFilterBtn.textContent = '⚠️ Hanya Baris Error';
-        this.errorFilterBtn.classList.remove('bg-red-500', 'text-white');
-        this.errorFilterBtn.classList.add('bg-red-100', 'text-red-700', 'dark:bg-red-900/40', 'dark:text-red-300');
-      }
+  _updateErrorFilterButton() {
+    if (!this.errorFilterBtn) return;
+    if (this.errorOnly) {
+      this.errorFilterBtn.textContent = '✅ Tampilkan Semua';
+      this.errorFilterBtn.classList.add('bg-red-500', 'text-white');
+      this.errorFilterBtn.classList.remove('bg-red-100', 'text-red-700', 'dark:bg-red-900/40', 'dark:text-red-300');
+    } else {
+      this.errorFilterBtn.textContent = '⚠️ Hanya Baris Error';
+      this.errorFilterBtn.classList.remove('bg-red-500', 'text-white');
+      this.errorFilterBtn.classList.add('bg-red-100', 'text-red-700', 'dark:bg-red-900/40', 'dark:text-red-300');
+    }
+  }
+
+  // ---------- HELPER: cache filtered rows ----------
+  _getFilteredKey() {
+    return `${this.searchQuery}|${this.errorOnly}|${this.data.length}`;
+  }
+
+  getFilteredRows() {
+    const key = this._getFilteredKey();
+    if (this._filteredCache && this._filteredCacheKey === key) {
+      return this._filteredCache;
     }
 
-  // ---------- HELPER ----------
-  /** Baris yang lolos filter + index aslinya di this.data */
-  getFilteredRows() {
     const q = this.searchQuery.trim().toLowerCase();
     const indexed = this.data.map((row, i) => ({ row, originalIdx: i }));
 
-    // Filter errorOnly
     let filtered = this.errorOnly
       ? indexed.filter(({ row }) => row.__errors && Object.keys(row.__errors).length > 0)
       : indexed;
 
-    // Filter pencarian
     if (q) {
       filtered = filtered.filter(({ row }) =>
         this.fields.some(f => String(row[f] ?? '').toLowerCase().includes(q))
       );
     }
+
+    this._filteredCache = filtered;
+    this._filteredCacheKey = key;
     return filtered;
   }
 
@@ -154,7 +179,7 @@ export class GridEditor {
     if (this.currentPage > this.totalPages) this.currentPage = this.totalPages;
   }
 
-  // ---------- RENDER TABEL (hanya wrapper) ----------
+  // ---------- RENDER TABEL ----------
   renderTable() {
     this.clampPage();
     const filtered = this.getFilteredRows();
@@ -165,39 +190,45 @@ export class GridEditor {
     let html = `<table class="w-full text-sm"><thead><tr>
       <th class="p-2"><input type="checkbox" class="select-all"></th>
       <th class="p-2">No</th>`;
-    this.fields.forEach(f => html += `<th class="p-2">${f}</th>`);
+    this.fields.forEach(f => html += `<th class="p-2">${escapeHtml(f)}</th>`);
     html += `<th class="p-2">Status</th><th class="p-2">Aksi</th></tr></thead><tbody>`;
 
     if (pageRows.length === 0) {
       const msg = this.searchQuery
-        ? `Tidak ada data yang cocok dengan "<strong>${this.searchQuery}</strong>".`
+        ? `Tidak ada data yang cocok dengan "<strong>${escapeHtml(this.searchQuery)}</strong>".`
         : 'Tidak ada data.';
       html += `<tr><td colspan="${this.fields.length + 4}" class="p-6 text-center text-gray-500">${msg}</td></tr>`;
     } else {
       pageRows.forEach(({ row, originalIdx }, i) => {
         const isChecked = this.selectedRows.has(originalIdx) ? 'checked' : '';
+
+        // Nomor: posisi di halaman (bukan originalIdx)
+        const displayNo = start + i + 1;
+
         html += `<tr class="border-b dark:border-gray-600">
           <td class="p-2"><input type="checkbox" class="row-checkbox" data-index="${originalIdx}" ${isChecked}></td>
-          <td class="p-2">${originalIdx + 1}</td>`;
+          <td class="p-2" title="Baris asli: ${originalIdx + 1}">${displayNo}</td>`;
+
         this.fields.forEach(f => {
           const val = row[f] ?? '';
           const errorClass = row.__errors && row.__errors[f] ? 'error-cell' : '';
-          html += `<td class="p-2 ${errorClass}" contenteditable="true" data-field="${f}" data-index="${originalIdx}">${val}</td>`;
+          const safeVal = escapeHtml(val);
+          html += `<td class="p-2 ${errorClass}" contenteditable="true" data-field="${escapeHtml(f)}" data-index="${originalIdx}" title="${row.__errors?.[f] ? escapeHtml(row.__errors[f]) : ''}">${safeVal}</td>`;
         });
-        
+
+        // Status: PAKAI statusHtml, bukan status
         const status = row.status || '';
-        // Kalau ada error, tampilkan ringkasan error di kolom Status
-        let statusHtml = status;
+        let statusHtml = escapeHtml(status);
         if (row.__errors && Object.keys(row.__errors).length > 0) {
           const errList = Object.entries(row.__errors)
             .map(([field, msg]) => `${field}: ${msg}`)
             .join('; ');
-          statusHtml = `<span class="text-red-500" title="${errList}">❌ ${errList}</span>`;
+          statusHtml = `<span class="text-red-500" title="${escapeHtml(errList)}">❌ ${escapeHtml(errList)}</span>`;
         } else if (status === 'OK') {
           statusHtml = `<span class="text-green-500">✅ OK</span>`;
         }
 
-        html += `<td class="p-2">${status}</td>
+        html += `<td class="p-2">${statusHtml}</td>
           <td class="p-2"><button class="delete-row-btn bg-red-500 text-white px-2 py-1 rounded text-xs" data-index="${originalIdx}">Hapus</button></td>
         </tr>`;
       });
@@ -210,7 +241,7 @@ export class GridEditor {
   }
 
   _attachTableEvents() {
-    // Per‑baris
+    // Per‑baris checkbox
     this.tableWrapper.querySelectorAll('.row-checkbox').forEach(cb => {
       cb.addEventListener('change', (e) => {
         const idx = parseInt(e.target.dataset.index);
@@ -220,7 +251,7 @@ export class GridEditor {
       });
     });
 
-    // Select‑all (hanya baris pada halaman aktif)
+    // Select‑all
     this.tableWrapper.querySelector('.select-all')?.addEventListener('change', (e) => {
       const filtered = this.getFilteredRows();
       const start = (this.currentPage - 1) * this.pageSize;
@@ -235,27 +266,36 @@ export class GridEditor {
       this.callbacks.onSelectionChange?.(this.selectedRows);
     });
 
-    // Delete: hapus dari this.data, lalu re‑render
+    // Delete per baris
     this.tableWrapper.querySelectorAll('.delete-row-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
         const idx = parseInt(e.target.dataset.index);
         this.data.splice(idx, 1);
         this.selectedRows.clear();
+        this._filteredCache = null;   // invalidate
         this.clampPage();
         this.renderTable();
-        this.callbacks.onDelete?.(idx);   // callback hanya untuk notifikasi, tidak splice lagi
+        this.callbacks.onDelete?.(idx);
       });
     });
 
-    // Edit sel
+    // Edit cell
     this.tableWrapper.querySelectorAll('[contenteditable="true"]').forEach(cell => {
       cell.addEventListener('blur', (e) => {
         const idx = parseInt(e.target.dataset.index);
         const field = e.target.dataset.field;
         const newVal = e.target.innerText.trim();
-        if (this.data[idx]) {
-          this.data[idx][field] = newVal;
-          this.callbacks.onCellEdit?.(idx, field, newVal);
+        if (!this.data[idx]) return;
+        if (this.data[idx][field] === newVal) return;   // tidak berubah
+
+        this.data[idx][field] = newVal;
+        this.callbacks.onCellEdit?.(idx, field, newVal);
+
+        // Setelah edit, kalau parent tidak render ulang, setidaknya
+        // hilangkan error-cell visual untuk field ini
+        if (this.data[idx].__errors?.[field]) {
+          delete this.data[idx].__errors[field];
+          e.target.classList.remove('error-cell');
         }
       });
     });
@@ -263,7 +303,12 @@ export class GridEditor {
 
   _updatePaginationUI(filteredCount) {
     const totalAll = this.data.length;
-    const totalError = this.data.filter(r => r.__errors && Object.keys(r.__errors).length > 0).length;
+    // Cache total error — tidak iterate ulang tiap render
+    if (this._totalErrorCache === undefined || this._totalErrorCacheKey !== totalAll) {
+      this._totalErrorCache = this.data.filter(r => r.__errors && Object.keys(r.__errors).length > 0).length;
+      this._totalErrorCacheKey = totalAll;
+    }
+    const totalError = this._totalErrorCache;
 
     const parts = [];
     if (this.searchQuery) parts.push(`${filteredCount} / ${totalAll} cocok`);
@@ -288,29 +333,33 @@ export class GridEditor {
   setErrorOnly(active) {
     this.errorOnly = !!active;
     this.currentPage = 1;
+    this._filteredCache = null;
     this._updateErrorFilterButton();
     this.renderTable();
   }
+
   getData() { return this.data; }
 
   setData(newData) {
     this.data = newData;
     this.selectedRows.clear();
     this.currentPage = 1;
-    this.errorOnly = false;          // ← reset
+    this.errorOnly = false;
     this.searchQuery = '';
+    this._filteredCache = null;
+    this._totalErrorCache = undefined;
     if (this.searchInput) this.searchInput.value = '';
     if (this.clearBtn) this.clearBtn.classList.add('hidden');
     this._updateErrorFilterButton();
     this.renderTable();
   }
 
-  /** Bisa dipanggil dari luar untuk memfilter via kode */
   setSearchQuery(q) {
     this.searchQuery = q || '';
     this.searchInput.value = this.searchQuery;
     this.clearBtn.classList.toggle('hidden', !this.searchQuery);
     this.currentPage = 1;
+    this._filteredCache = null;
     this.renderTable();
   }
 }
