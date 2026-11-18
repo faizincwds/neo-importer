@@ -46,7 +46,7 @@ export class ImportProcess {
       await this.processBatch(batch, progressCallback);
     }
     this.isRunning = false;
-    this.logger.log('info', 'Import selesai', { success: this.totalSuccess, failed: this.totalFailed });
+    this.logger.log('info', 'Import selesai', { success: this.totalSuccess, failed: this.totalFailed, skipped: this.totalSkipped, });
     this.notifyProgress(progressCallback, true);   // ← flush final
     return { success: this.totalSuccess, failed: this.totalFailed, skipped: this.totalSkipped };
 
@@ -76,12 +76,13 @@ export class ImportProcess {
     }
 
     // ---------- Row ditandai skipped oleh caller ----------
+    // (sudah ada di DB, tidak perlu diubah)
     if (row && row.skipped) {
-      this.totalSuccess++;
+      this.totalSkipped++;
       this.realtimeLogs.push({
         timestamp: new Date().toISOString(),
-        type: 'success',
-        message: row.message || 'Data dilewati',
+        type: 'skipped',
+        message: row.message || 'Data sudah ada, dilewati',
         row: this.extractRowSummary(row)
       });
       this.notifyProgress(progressCallback);
@@ -116,13 +117,13 @@ export class ImportProcess {
       }
       const apiResult = await apiMethod.call(this.api, arg);
 
-      // API mengembalikan { skipped: true } → dianggap sukses
+      // API membalas { skipped: true } → data sudah ada, TIDAK diinsert
       if (apiResult && apiResult.skipped) {
-        this.totalSuccess++;
+        this.totalSkipped++;
         this.realtimeLogs.push({
           timestamp: new Date().toISOString(),
-          type: 'success',
-          message: apiResult.message || 'Data dilewati',
+          type: 'skipped',
+          message: apiResult.message || 'Data sudah ada, dilewati',
           row: this.extractRowSummary(arg)
         });
         this.notifyProgress(progressCallback);

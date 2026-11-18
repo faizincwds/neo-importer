@@ -36,11 +36,9 @@ export function renderConfigView(container) {
   document.getElementById('config-save-btn').addEventListener('click', () => {
     const url = document.getElementById('config-api-url').value.trim() || 'http://localhost:3003';
     const type = document.getElementById('config-api-type').value;
-    const username = document.getElementById('config-username').value.trim();
 
     localStorage.setItem(STORAGE_KEYS.API_URL, url);
     localStorage.setItem(STORAGE_KEYS.API_TYPE, type);
-    if (username) localStorage.setItem('nf_username', username);
 
     showToast('Konfigurasi berhasil disimpan! Silakan logout dan login ulang jika perlu.', 'success');
   });

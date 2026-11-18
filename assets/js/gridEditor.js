@@ -132,11 +132,11 @@ export class GridEditor {
     if (this.errorOnly) {
       this.errorFilterBtn.textContent = '✅ Tampilkan Semua';
       this.errorFilterBtn.classList.add('bg-red-500', 'text-white');
-      this.errorFilterBtn.classList.remove('bg-red-100', 'text-red-700', 'dark:bg-red-900/40', 'dark:text-red-300');
+      this.errorFilterBtn.classList.remove('bg-red-100', 'text-red-700', 'dark:bg-red-900/40', 'dark:text-red-500');
     } else {
       this.errorFilterBtn.textContent = '⚠️ Hanya Baris Error';
       this.errorFilterBtn.classList.remove('bg-red-500', 'text-white');
-      this.errorFilterBtn.classList.add('bg-red-100', 'text-red-700', 'dark:bg-red-900/40', 'dark:text-red-300');
+      this.errorFilterBtn.classList.add('bg-red-100', 'text-red-700', 'dark:bg-red-900/40', 'dark:text-red-700');
     }
   }
 

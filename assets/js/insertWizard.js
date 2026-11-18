@@ -2168,15 +2168,19 @@ export function renderInsertView(container) {
       const logEl = document.getElementById('import-log');
       if (logEl && progress.logs && progress.logs.length > 0) {
         const html = progress.logs.map(log => {
-          const icon = log.type === 'success' ? '✅' : (log.type === 'failed' ? '❌' : '⚠️');
+          const icon = log.type === 'success' ? '✅'
+                        : log.type === 'failed'  ? '❌'
+                        : log.type === 'skipped' ? '⏭️'
+                        : '⚠️';
+
           const row  = log.row || {};
           const disp = row._display || {};
 
-          const mk    = disp.kode_mata_kuliah || disp.nim || row.nik || row.kode_mata_kuliah || row.id_matkul || '?';
+          const mk    = disp.kode_mata_kuliah || disp.nim || row.nik || row.kode_mata_kuliah || row.id_matkul || '';
           const nama  = disp.nama || disp.nama_mata_kuliah || row.nama_mata_kuliah || row.nama_mahasiswa
                         || row.nama_dosen || disp.nama_dosen || disp.nama_mahasiswa
                         || disp.nama_evaluasi || disp.nama_komponen || '';
-          const kelas = disp.kelas || disp.nama_kelas || row.kelas || row.nama_kelas_kuliah || '?';
+          const kelas = disp.kelas || disp.nama_kelas || row.kelas || row.nama_kelas_kuliah || '';
           const aksi  = disp.aksi || row.tipe || currentMethod;
 
           let info = `[${mk}] ${nama} | ${kelas} ${aksi} | Ket: ${log.message}`;
@@ -2281,7 +2285,12 @@ export function renderInsertView(container) {
         }
         // Untuk metode lain, biarkan log realtime yang sudah terbentuk (tidak diubah)
         
-        showToast(`Import selesai: ${result.success} sukses, ${result.failed} gagal`, result.failed ? 'error' : 'success');
+        const parts = [`${result.success} sukses`, `${result.failed} gagal`];
+        if (result.skipped > 0) parts.push(`${result.skipped} dilewati`);
+        showToast(
+          `Import selesai: ${parts.join(', ')}`,
+          result.failed ? 'error' : (result.success > 0 ? 'success' : 'warning')
+        );
 
       });
   });

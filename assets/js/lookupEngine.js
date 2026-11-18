@@ -10,12 +10,7 @@ export class LookupEngine {
   // ============================================================
   // HELPER: in-flight deduplication
   // ============================================================
-  /**
-   * Ambil dari cache. Jika tidak ada, jalankan fetchFn() sekali,
-   * simpan Promise ke cache agar pemanggil paralel berbagi hasil yang sama.
-   */
   async _getOrFetch(key, fetchFn) {
-    // Gunakan `key in` agar hasil `null` ikut ter-cache (kode invalid tidak di-refetch)
     if (this.cache[key] !== undefined) return this.cache[key];
 
     const promise = (async () => {
@@ -29,7 +24,7 @@ export class LookupEngine {
 
     this.cache[key] = promise;
     const result = await promise;
-    this.cache[key] = result;   // ← cache juga null, bukan delete
+    this.cache[key] = result;
     return result;
   }
 
@@ -79,14 +74,15 @@ export class LookupEngine {
 
   async lookupProdi(kode) {
     if (!kode) return null;
-    const key = `prodi_${kode}`;
+    const clean = String(kode).trim();
+    const key = `prodi_${clean}`;
     return this._getOrFetch(key, async () => {
       const list = await this.api.getProdi();
       const arr = Array.isArray(list) ? list : (list?.data || list?.result || []);
       if (DEBUG_API) console.log('GetProdi result:', arr);
       const found = arr.find(p => {
-        const kodeProdi = (p.kode_prodi || p.kode_program_studi || p.kd_prodi || '').toString().trim();
-        return kodeProdi === kode.toString().trim();
+        const kodeProdi = String(p.kode_prodi || p.kode_program_studi || p.kd_prodi || '').trim();
+        return kodeProdi === clean;
       });
       return found ? this._normalizeProdi(found) : null;
     });
@@ -94,37 +90,42 @@ export class LookupEngine {
 
   async lookupProdiByName(nama) {
     if (!nama) return null;
-    const key = `prodi_name_${nama}`;
+    const clean = String(nama).trim().toLowerCase();
+    const key = `prodi_name_${clean}`;
     return this._getOrFetch(key, async () => {
       const list = await this.api.getProdi();
       const arr = Array.isArray(list) ? list : (list?.data || list?.result || []);
       const found = arr.find(p => {
-        const namaProdi = (p.nama_prodi || p.nama_program_studi || p.nama_resmi || p.prodi || '').trim().toLowerCase();
-        return namaProdi === nama.trim().toLowerCase();
+        const namaProdi = String(p.nama_prodi || p.nama_program_studi || p.nama_resmi || p.prodi || '').trim().toLowerCase();
+        return namaProdi === clean;
       });
       return found ? this._normalizeProdi(found) : null;
     });
   }
 
+  // ✅ FIX: type-safe comparison
   async lookupProdiById(id) {
     if (!id) return null;
-    const key = `prodi_id_${id}`;
+    const clean = String(id).trim();
+    const key = `prodi_id_${clean}`;
     return this._getOrFetch(key, async () => {
       const list = await this.api.getProdi();
       const arr = Array.isArray(list) ? list : (list?.data || list?.result || []);
-      const found = arr.find(p => (p.id_prodi || p.id) === id);
+      const found = arr.find(p => String(p.id_prodi || p.id || '').trim() === clean);
       return found ? this._normalizeProdi(found) : null;
     });
   }
 
   // ======================== DOSEN ========================
+  // ✅ FIX: type-safe comparison
   async lookupDosenByNuptk(nuptk) {
     if (!nuptk) return null;
-    const key = `dosen_nuptk_${nuptk}`;
+    const clean = String(nuptk).trim();
+    const key = `dosen_nuptk_${clean}`;
     return this._getOrFetch(key, async () => {
       const list = await this.api.getListDosen();
       const arr = Array.isArray(list) ? list : (list?.data || []);
-      const found = arr.find(d => d.nuptk === nuptk);
+      const found = arr.find(d => String(d.nuptk || '').trim() === clean);
       if (found) {
         return {
           id_dosen: found.id_dosen,
@@ -138,13 +139,15 @@ export class LookupEngine {
     });
   }
 
+  // ✅ FIX: type-safe comparison
   async lookupDosenByNidn(nidn) {
     if (!nidn) return null;
-    const key = `dosen_nidn_${nidn}`;
+    const clean = String(nidn).trim();
+    const key = `dosen_nidn_${clean}`;
     return this._getOrFetch(key, async () => {
       const list = await this.api.getListDosen();
       const arr = Array.isArray(list) ? list : (list?.data || []);
-      const found = arr.find(d => d.nidn === nidn);
+      const found = arr.find(d => String(d.nidn || '').trim() === clean);
       if (found) {
         return {
           id_dosen: found.id_dosen,
@@ -159,15 +162,15 @@ export class LookupEngine {
 
   async lookupDosenByNama(nama) {
     if (!nama) return null;
-    const key = `dosen_nama_${nama.trim().toLowerCase()}`;
+    const clean = String(nama).trim().toLowerCase();
+    const key = `dosen_nama_${clean}`;
     return this._getOrFetch(key, async () => {
       const list = await this.api.getListDosen();
       const arr = Array.isArray(list) ? list : (list?.data || []);
-      const target = nama.trim().toLowerCase();
 
-      let found = arr.find(d => (d.nama_dosen || '').toLowerCase() === target);
+      let found = arr.find(d => String(d.nama_dosen || '').toLowerCase() === clean);
       if (!found) {
-        found = arr.find(d => (d.nama_dosen || '').toLowerCase().includes(target));
+        found = arr.find(d => String(d.nama_dosen || '').toLowerCase().includes(clean));
       }
       if (found) {
         return {
@@ -183,9 +186,10 @@ export class LookupEngine {
 
   async lookupPenugasanDosen(nuptk) {
     if (!nuptk) return null;
-    const key = `penugasan_${nuptk}`;
+    const clean = String(nuptk).trim();
+    const key = `penugasan_${clean}`;
     return this._getOrFetch(key, async () => {
-      const list = await this.api.getListPenugasanDosen({ nuptk: nuptk.trim() });
+      const list = await this.api.getListPenugasanDosen({ nuptk: clean });
       const arr = Array.isArray(list) ? list : (list?.data || []);
       const found = arr[0];
       if (found && found.id_registrasi_dosen) {
@@ -202,7 +206,6 @@ export class LookupEngine {
     const key = `semester_${clean}`;
     return this._getOrFetch(key, async () => {
       try {
-        // Pakai api.getSemester() yang sudah di-cache (bukan api.call langsung)
         const list = await this.api.getSemester();
         const arr = Array.isArray(list) ? list : (list?.data || []);
         const found = arr.find(s => String(s.id_semester).trim() === clean);
@@ -213,12 +216,10 @@ export class LookupEngine {
             _raw: found
           };
         }
-        // Semester baru yang belum ada di list — hanya izinkan jika format valid
         if (/^\d{4,5}$/.test(clean)) {
           if (DEBUG_API) console.warn(`[Semester] ${clean} tidak ada di list, fallback ke kode mentah`);
           return { id_semester: clean, _raw: {} };
         }
-        // Format tidak valid → return null (caller akan set error)
         return null;
       } catch (e) {
         console.warn('Lookup semester gagal:', e);
@@ -257,10 +258,11 @@ export class LookupEngine {
 
   async lookupPesertaKelas(nim, idKelas) {
     if (!nim || !idKelas) return null;
-    const key = `peserta_${nim}_${idKelas}`;
+    const cleanNim = String(nim).trim();
+    const key = `peserta_${cleanNim}_${idKelas}`;
     return this._getOrFetch(key, async () => {
       const list = await this.api.getListPesertaKelasKuliah({
-        nim: nim.trim(),
+        nim: cleanNim,
         id_kelas_kuliah: idKelas
       });
       const arr = Array.isArray(list) ? list : (list?.data || []);
@@ -277,13 +279,15 @@ export class LookupEngine {
   }
 
   // ======================== MAHASISWA ========================
+  // ✅ FIX: type-safe comparison
   async lookupMahasiswaByNim(nim) {
     if (!nim) return null;
-    const key = `mhs_nim_${nim}`;
+    const clean = String(nim).trim();
+    const key = `mhs_nim_${clean}`;
     return this._getOrFetch(key, async () => {
       const list = await this.api.getListMahasiswa();
       const arr = Array.isArray(list) ? list : (list?.data || []);
-      const found = arr.find(m => m.nim === nim);
+      const found = arr.find(m => String(m.nim || '').trim() === clean);
       if (found) {
         return { id_mahasiswa: found.id_mahasiswa, nama_mahasiswa: found.nama_mahasiswa };
       }
@@ -297,7 +301,6 @@ export class LookupEngine {
     const key = `registrasi_mhs_${clean}`;
     return this._getOrFetch(key, async () => {
       try {
-        // Fetch SEMUA riwayat sekali, lalu filter lokal (bukan API call per NIM)
         const arr = await this._getOrFetch('__all_riwayat_pendidikan', async () => {
           const res = await this.api.call('GetListRiwayatPendidikanMahasiswa', {});
           const data = this.api.extractData(res);
@@ -326,19 +329,18 @@ export class LookupEngine {
 
   async lookupMahasiswaByNama(nama) {
     if (!nama) return null;
-    const target = nama.trim().toLowerCase();
+    const target = String(nama).trim().toLowerCase();
     const key = `mhs_nama_${target}`;
     return this._getOrFetch(key, async () => {
       const list = await this.api.getListMahasiswa();
       const arr = Array.isArray(list) ? list : (list?.data || []);
-      let found = arr.find(m => (m.nama_mahasiswa || '').toLowerCase() === target);
-      if (!found) found = arr.find(m => (m.nama_mahasiswa || '').toLowerCase().includes(target));
+      let found = arr.find(m => String(m.nama_mahasiswa || '').toLowerCase() === target);
+      if (!found) found = arr.find(m => String(m.nama_mahasiswa || '').toLowerCase().includes(target));
       return found || null;
     });
   }
 
   async lookupMahasiswaByCriteria(row) {
-    // Cache key unik per kombinasi kriteria
     const cacheKey = `mhs_criteria_${row.nik || ''}_${row.email || ''}_${row.nama || ''}`;
     return this._getOrFetch(cacheKey, async () => {
       const candidates = [
@@ -367,15 +369,16 @@ export class LookupEngine {
   // ======================== WILAYAH & REFERENSI ========================
   async lookupWilayah(namaKecamatan, level = 3) {
     if (!namaKecamatan) return null;
-    const clean = namaKecamatan.trim().toLowerCase();
+    const clean = String(namaKecamatan).trim().toLowerCase();
     const key = `wilayah_${level}_${clean}`;
     return this._getOrFetch(key, async () => {
-      const list = await this.api.getWilayah(level);   // ← pakai cache api.js
+      const list = await this.api.getWilayah(level);
       const arr = Array.isArray(list?.data) ? list.data : (Array.isArray(list) ? list : []);
 
+      // ✅ FIX: type-safe comparison (string vs number)
       const found = arr.find(item =>
-        item.id_level_wilayah === level &&
-        (item.nama_wilayah || '').toLowerCase() === clean
+        String(item.id_level_wilayah) === String(level) &&
+        String(item.nama_wilayah || '').toLowerCase() === clean
       );
       return found || null;
     });
@@ -392,16 +395,15 @@ export class LookupEngine {
 
   async lookupByNama(method, nama, labelField) {
     if (!nama) return null;
-    const clean = nama.trim().toLowerCase();
+    const clean = String(nama).trim().toLowerCase();
     const key = `${method}_${clean}`;
     return this._getOrFetch(key, async () => {
-      const list = await this._getListCached(method);
-      const arr = Array.isArray(list?.data) ? list.data : (Array.isArray(list) ? list : []);
+      const arr = await this._getListCached(method);
 
-      let found = arr.find(item => (item[labelField] || '').toLowerCase() === clean);
+      let found = arr.find(item => String(item[labelField] || '').toLowerCase() === clean);
       if (!found) {
         found = arr.find(item => {
-          const itemName = (item[labelField] || '').toLowerCase();
+          const itemName = String(item[labelField] || '').toLowerCase();
           return itemName.includes(clean) || clean.includes(itemName);
         });
       }
@@ -450,69 +452,72 @@ export class LookupEngine {
     return this._getOrFetch(key, async () => {
       const list = await this.api.getJenisEvaluasi();
       const arr = Array.isArray(list) ? list : (list?.data || []);
-      return arr.find(j => j.id_jenis_evaluasi == id) || null;
+      return arr.find(j => String(j.id_jenis_evaluasi) === String(id)) || null;
+    });
+  }
+
+  // ✅ FIX: fetch sekali per kelas
+  async _getKomponenByKelas(kelasId) {
+    return this._getOrFetch(`komponen_list_${kelasId}`, async () => {
+      const res = await this.api.getListKomponenEvaluasiKelas({ id_kelas_kuliah: kelasId });
+      return Array.isArray(res) ? res : (res?.data || []);
     });
   }
 
   async lookupKomponenEvaluasi(kelasId, jenisEvaluasi, namaEvaluasi = null) {
     if (!kelasId || !jenisEvaluasi) return null;
-    const key = `komponen_${kelasId}_${jenisEvaluasi}_${namaEvaluasi || ''}`;
-    return this._getOrFetch(key, async () => {
-      const res = await this.api.getListKomponenEvaluasiKelas({ id_kelas_kuliah: kelasId });
-      const list = Array.isArray(res) ? res : (res?.data || []);
+    const list = await this._getKomponenByKelas(kelasId);
 
-      let found;
-      if (namaEvaluasi && namaEvaluasi.trim() !== '') {
-        const target = namaEvaluasi.trim().toLowerCase();
-        found = list.find(item =>
-          item.id_jenis_evaluasi == jenisEvaluasi &&
-          (item.nama || '').toLowerCase() === target
-        );
-        if (!found) return null;
-      } else {
-        found = list.find(item => item.id_jenis_evaluasi == jenisEvaluasi);
-      }
+    let found;
+    if (namaEvaluasi && namaEvaluasi.trim() !== '') {
+      const target = String(namaEvaluasi).trim().toLowerCase();
+      found = list.find(item =>
+        String(item.id_jenis_evaluasi) === String(jenisEvaluasi) &&
+        String(item.nama || '').toLowerCase() === target
+      );
+      if (!found) return null;
+    } else {
+      found = list.find(item => String(item.id_jenis_evaluasi) === String(jenisEvaluasi));
+    }
 
-      if (found) {
-        return {
-          id_komponen_evaluasi: found.id_komponen_evaluasi,
-          nama_evaluasi: found.nama || '',
-          nama_inggris: found.nama_inggris || '',
-          nomor_urut: found.nomor_urut,
-          bobot_evaluasi: found.bobot_evaluasi,
-          _raw: found
-        };
-      }
-      return null;
-    });
+    if (found) {
+      return {
+        id_komponen_evaluasi: found.id_komponen_evaluasi,
+        nama_evaluasi: found.nama || '',
+        nama_inggris: found.nama_inggris || '',
+        nomor_urut: found.nomor_urut,
+        bobot_evaluasi: found.bobot_evaluasi,
+        _raw: found
+      };
+    }
+    return null;
   }
 
   async lookupKomponenEvaluasiByIdUrut(kelasId, jenisEvaluasi, nomorUrut) {
     if (!kelasId || !jenisEvaluasi || !nomorUrut) return null;
-    const key = `komponen_${kelasId}_${jenisEvaluasi}_${nomorUrut}`;
-    return this._getOrFetch(key, async () => {
-      const res = await this.api.getListKomponenEvaluasiKelas({ id_kelas_kuliah: kelasId });
-      const list = Array.isArray(res) ? res : (res?.data || []);
-      const found = list.find(item =>
-        item.id_jenis_evaluasi == jenisEvaluasi &&
-        item.nomor_urut == nomorUrut
-      );
-      if (found && found.id_komponen_evaluasi) {
-        return {
-          id_komponen_evaluasi: found.id_komponen_evaluasi,
-          nama: found.nama || '',
-          bobot: found.bobot_evaluasi || '0',
-          _raw: found
-        };
-      }
-      return null;
-    });
+    const list = await this._getKomponenByKelas(kelasId);
+    const found = list.find(item =>
+      String(item.id_jenis_evaluasi) === String(jenisEvaluasi) &&
+      String(item.nomor_urut) === String(nomorUrut)
+    );
+    if (found && found.id_komponen_evaluasi) {
+      return {
+        id_komponen_evaluasi: found.id_komponen_evaluasi,
+        nama: found.nama || '',
+        bobot: found.bobot_evaluasi || '0',
+        _raw: found
+      };
+    }
+    return null;
   }
 
   async getRencanaEvaluasiByMatkul(kodeMk, namaEvaluasi) {
     const list = await this.api.getListRencanaEvaluasi({ kode_mata_kuliah: kodeMk });
     const arr = Array.isArray(list) ? list : (list?.data || []);
-    return arr.find(e => e.kode_mata_kuliah === kodeMk && e.nama_evaluasi === namaEvaluasi);
+    return arr.find(e =>
+      String(e.kode_mata_kuliah || '').trim() === String(kodeMk).trim() &&
+      String(e.nama_evaluasi || '').trim() === String(namaEvaluasi).trim()
+    );
   }
 
   async lookupRencanaPembelajaran(kodeMk, namaEvaluasi) {
@@ -534,10 +539,11 @@ export class LookupEngine {
 
   async lookupAktivitasMengajar(nuptk, idKelas) {
     if (!nuptk || !idKelas) return null;
-    const key = `akt_${nuptk}_${idKelas}`;
+    const clean = String(nuptk).trim();
+    const key = `akt_${clean}_${idKelas}`;
     return this._getOrFetch(key, async () => {
       const list = await this.api.getDosenPengajarKelasKuliah({
-        nuptk: nuptk.trim(),
+        nuptk: clean,
         id_kelas_kuliah: idKelas
       });
       const arr = Array.isArray(list) ? list : (list?.data || []);
@@ -552,10 +558,13 @@ export class LookupEngine {
   // ======================== AKTIVITAS MAHASISWA ========================
   async lookupAktivitas(judul, idProdi, idSemester) {
     if (!judul || !idProdi || !idSemester) return null;
-    const key = `akt_${idProdi}_${idSemester}_${judul.trim().toLowerCase()}`;
+    const cleanJudul = String(judul).trim();
+    const key = `akt_${idProdi}_${idSemester}_${cleanJudul.toLowerCase()}`;
     return this._getOrFetch(key, async () => {
+      // ✅ Pakai escape SQL (pastikan api._escSql ada)
+      const safeJudul = this.api._escSql ? this.api._escSql(cleanJudul) : cleanJudul.replace(/'/g, "''");
       const res = await this.api.call('GetListAktivitasMahasiswa', {
-        filter: `id_prodi = '${idProdi}' AND id_semester = '${idSemester}' AND judul LIKE '%${judul}%'`,
+        filter: `id_prodi = '${idProdi}' AND id_semester = '${idSemester}' AND judul LIKE '%${safeJudul}%'`,
         limit: 1
       });
       const data = this.api.extractData(res);
@@ -581,9 +590,10 @@ export class LookupEngine {
 
   async lookupAktivitasByNim(nim) {
     if (!nim) return null;
-    const key = `aktivitas_by_nim_${nim}`;
+    const clean = String(nim).trim();
+    const key = `aktivitas_by_nim_${clean}`;
     return this._getOrFetch(key, async () => {
-      const list = await this.api.getListAnggotaAktivitasMahasiswa({ nim: nim.trim() });
+      const list = await this.api.getListAnggotaAktivitasMahasiswa({ nim: clean });
       const arr = Array.isArray(list) ? list : (list?.data || []);
       const found = arr[0];
       if (found && found.id_aktivitas) {

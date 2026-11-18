@@ -9,6 +9,10 @@ export class NeoFeederAPI {
     this.persistCache = true;   // ← default: aktif untuk mode normal
   }
 
+  _escSql(str) {
+    return String(str ?? '').replace(/'/g, "''");
+  }
+
   setToken(token) {
     this.token = token;
     localStorage.setItem(STORAGE_KEYS.TOKEN, token);
@@ -254,14 +258,56 @@ export class NeoFeederAPI {
     } catch (e) { return null; }
   }
 
-  _setCache(key, data, count) {
+  // _setCache(key, data, count) {
+  //   const entry = { data, count, timestamp: Date.now() };
+  //   this._memCache.set(key, entry);
+  //   if (!this.persistCache) return;    // ← skip localStorage saat import
+  //   try {
+  //     localStorage.setItem(`${CACHE_PREFIX}${key}`, JSON.stringify(entry));
+  //   } catch (e) {
+  //     console.warn('Cache save failed (quota?), skip', e);
+  //   }
+  // }
+
+  _setCache(key, data, count, opts = {}) {
     const entry = { data, count, timestamp: Date.now() };
-    this._memCache.set(key, entry);
-    if (!this.persistCache) return;    // ← skip localStorage saat import
+    this._memCache.set(key, entry);                 // mem cache SELALU diisi
+
+    if (!this.persistCache) return;
+    if (opts.persist === false) return;             // ← opt-out eksplisit
+
+    let raw;
     try {
-      localStorage.setItem(`${CACHE_PREFIX}${key}`, JSON.stringify(entry));
+      raw = JSON.stringify(entry);
     } catch (e) {
-      console.warn('Cache save failed (quota?), skip', e);
+      if (DEBUG_API) console.warn(`[CACHE] ${key} tidak bisa diserialize`, e);
+      return;
+    }
+
+    // Guard ukuran: >2 MB jangan coba persist (localStorage ~5 MB / origin)
+    if (raw.length > 2 * 1024 * 1024) {
+      if (DEBUG_API)
+        console.log(`[CACHE] ${key} terlalu besar (${(raw.length / 1024 / 1024).toFixed(2)} MB), memory-only`);
+      return;
+    }
+
+    try {
+      localStorage.setItem(`${CACHE_PREFIX}${key}`, raw);
+    } catch (e) {
+      if (e.name === 'QuotaExceededError' || /quota/i.test(e.message || '')) {
+        if (DEBUG_API) console.warn(`[CACHE] quota penuh saat simpan ${key} → bersihkan cache persist lama`);
+        // Hapus cache persist lama (mem cache tetap hidup, jadi request berikutnya masih hit)
+        Object.keys(localStorage)
+          .filter(k => k.startsWith(CACHE_PREFIX))
+          .forEach(k => localStorage.removeItem(k));
+        try {
+          localStorage.setItem(`${CACHE_PREFIX}${key}`, raw);
+          if (DEBUG_API) console.log(`[CACHE] ${key} berhasil disimpan setelah cleanup`);
+          return;
+        } catch { /* masih gagal → skip */ }
+      } else {
+        console.warn('Cache save failed, skip', e);
+      }
     }
   }
 
@@ -280,54 +326,52 @@ export class NeoFeederAPI {
   /**
    * Ambil data dengan cache + TTL + count-check.
    */
-  async _cachedFetch(key, fetchFn, ttl, countFn = null) {
-  const cached = this._getCache(key);
-  const now = Date.now();
+  async _cachedFetch(key, fetchFn, ttl, countFn = null, opts = {}) {
+    const cached = this._getCache(key);
+    const now = Date.now();
 
-  if (cached) {
-    const age = now - cached.timestamp;
-    if (age < ttl) {
-      // Cek countFn HANYA saat mendekati kedaluwarsa (80% TTL).
-      // Tidak setiap hit. Ini memangkas 3-4 request per baris.
-      if (countFn && age > ttl * 0.8) {
-        try {
-          const currentCount = await countFn();
-          if (currentCount !== null && currentCount === cached.count) {
-            if (DEBUG_API) console.log(`[CACHE HIT] ${key} (${currentCount} item)`);
+    if (cached) {
+      const age = now - cached.timestamp;
+      if (age < ttl) {
+        // Cek countFn HANYA saat mendekati kedaluwarsa (80% TTL).
+        // Tidak setiap hit. Ini memangkas 3-4 request per baris.
+        if (countFn && age > ttl * 0.8) {
+          try {
+            const currentCount = await countFn();
+            if (currentCount !== null && currentCount === cached.count) {
+              if (DEBUG_API) console.log(`[CACHE HIT] ${key} (${currentCount} item)`);
+              return cached.data;
+            }
+            if (DEBUG_API) console.log(`[CACHE STALE] ${key} count berubah`);
+          } catch (e) {
             return cached.data;
           }
-          if (DEBUG_API) console.log(`[CACHE STALE] ${key} count berubah`);
-        } catch (e) {
+        } else {
+          if (DEBUG_API) console.log(`[CACHE HIT] ${key}`);
           return cached.data;
         }
-      } else {
-        if (DEBUG_API) console.log(`[CACHE HIT] ${key}`);
-        return cached.data;
       }
     }
-  }
 
-  // Dedup: 5 worker yang minta data yang sama saat cache kosong → 1 fetch saja
-  if (this._pendingFetch.has(key)) {
-    return this._pendingFetch.get(key);
-  }
+    // Dedup: 5 worker yang minta data yang sama saat cache kosong → 1 fetch saja
+    if (this._pendingFetch.has(key)) return this._pendingFetch.get(key);
 
-  if (DEBUG_API) console.log(`[CACHE MISS] ${key}, fetch baru`);
-  const promise = (async () => {
-    const data = await fetchFn();
-    let count = null;
-    if (countFn) { try { count = await countFn(); } catch (e) {} }
-    this._setCache(key, data, count);
-    return data;
-  })();
+    if (DEBUG_API) console.log(`[CACHE MISS] ${key}, fetch baru`);
+      const promise = (async () => {
+      const data = await fetchFn();
+      let count = null;
+      if (countFn) { try { count = await countFn(); } catch (e) {} }
+      this._setCache(key, data, count, opts);        // ← teruskan opts
+      return data;
+    })();
 
-  this._pendingFetch.set(key, promise);
-  try {
-    return await promise;
-  } finally {
-    this._pendingFetch.delete(key);
+    this._pendingFetch.set(key, promise);
+    try {
+      return await promise;
+    } finally {
+      this._pendingFetch.delete(key);
+    }
   }
-}
 
   // Helper count – panggil GetCount* dan kembalikan angka
   async _count(method) {
@@ -415,7 +459,7 @@ export class NeoFeederAPI {
 
   async getDetailMataKuliah(kode_mk) {
     const res = await this.call('GetDetailMataKuliah', {
-      filter: `kode_mata_kuliah = '${kode_mk}'`,
+      filter: `kode_mata_kuliah = '${this._escSql(kode_mk)}'`,   // ← pakai _escSql
       limit: 1
     });
     const data = this.extractData(res);
@@ -426,7 +470,7 @@ export class NeoFeederAPI {
 
   async getDetailKurikulum(kode_kurikulum) {
     const res = await this.call('GetDetailKurikulum', {
-      filter: `kode_kurikulum = '${kode_kurikulum}'`,
+      filter: `kode_kurikulum = '${this._escSql(kode_kurikulum)}'`,
       limit: 1
     });
     const data = this.extractData(res);
@@ -476,6 +520,61 @@ export class NeoFeederAPI {
       CACHE_TTL.mahasiswa,
       () => this._count('GetCountMahasiswa')
     );
+  }
+
+  // ✅ Cache: Mahasiswa Lulus/DO
+  async getDetailMahasiswaLulusDO(force = false) {
+    if (force) this.invalidateCache('lulusdo');
+    return this._cachedFetch(
+      'lulusdo',
+      async () => this.extractData(await this.call('GetDetailMahasiswaLulusDO')),
+      CACHE_TTL.mahasiswalulusdo,
+      () => this._count('GetCountMahasiswaLulusDO')
+    );
+  }
+
+  /**
+   * Ambil daftar mahasiswa lulus/DO difilter per jenis keluar.
+   * Reuse cache GetListMahasiswaLulusDO → 1 request untuk semua jenis.
+   *
+   * @param {'lulus'|'do'|'mundur'|'mengundurkan'|'putus'|'mutasi'|'meninggal'|'nongelar'|'Semua'} jenis
+   * @param {boolean} force
+   * @returns {Promise<Array<{
+   *   nim, nama_mahasiswa, nama_program_studi,
+   *   id_jenis_keluar, no_seri_ijazah, sk_yudisium,
+   *   tgl_sk_yudisium, id_periode_keluar, ...
+   * }>>}
+   */
+  async getMahasiswaLulusDO(jenis = 'Semua', force = false) {
+    const target = String(jenis).toLowerCase();
+    const key = `mhs_lulusdo_${target}`;
+    if (force) this.invalidateCache(key);
+
+    return this._cachedFetch(key, async () => {
+      // Reuse cache method lama → hanya 1 network call untuk 7 jenis
+      const all = await this.getDetailMahasiswaLulusDO(force);
+      const arr = Array.isArray(all) ? all : (all?.data || []);
+
+      if (target === 'semua') return arr;
+
+      // Mapping sama dengan getCountMahasiswaLulusDO, biar konsisten
+      const MAP = {
+        'nongelar':    '0',
+        'lulus':       '1',
+        'mutasi':      '2',
+        'do':          '3',
+        'mengundurkan':'4',
+        'mundur':      '4',
+        'putus':       '5',
+        'meninggal':   '6',
+      };
+      const idJenis = MAP[target];
+      if (!idJenis) return [];
+
+      return arr.filter(m =>
+        String(m.id_jenis_keluar ?? '').trim() === idJenis
+      );
+    }, 5 * 60 * 1000);
   }
 
 /**
@@ -823,6 +922,18 @@ async getStatusMahasiswaCounts(idSemester = null, force = false) {
     return this.extractData(res);
   }
 
+  // api.js — tambahan opsional
+  async getAllRiwayatPendidikanMahasiswa(force = false) {
+    const key = 'riwayat_all';
+    if (force) this.invalidateCache(key);
+    return this._cachedFetch(key, async () => {
+      const res = await this.call('GetListRiwayatPendidikanMahasiswa', {
+        limit: 100000,
+      });
+      return this.extractData(res) || [];
+    }, 10 * 60 * 1000);
+  }
+
   async getJenisEvaluasi() {
     const res = await this.call('GetJenisEvaluasi');
     return this.extractData(res);
@@ -1030,7 +1141,7 @@ async getStatusMahasiswaCounts(idSemester = null, force = false) {
           id_mahasiswa = biodataResult;
           biodataBaru = true;
       } else if (biodataResult && biodataResult.skipped) {
-          loggerInst.log('error', 'Biodata sudah ada, menggunakan id_mahasiswa yang ada');
+          loggerInst.log('info', 'Biodata sudah ada, menggunakan id_mahasiswa yang ada');
           id_mahasiswa = biodataResult.id_mahasiswa;
       } else {
           throw new Error('Gagal mendapatkan id_mahasiswa dari respons insert biodata');
@@ -1059,11 +1170,11 @@ async getStatusMahasiswaCounts(idSemester = null, force = false) {
       const riwayatAda = await this.cekRiwayatMahasiswa(id_mahasiswa);
       loggerInst.log('info', '🔍 Cek riwayat mahasiswa:', riwayatAda ? 'sudah ada' : 'belum ada');
       if (riwayatAda) {
-        if (DEBUG_API) console.log('⏭️ Riwayat sudah ada, tidak perlu insert lagi');
-          loggerInst.log('info', '⏭️ Riwayat sudah ada, tidak perlu insert lagi', { id_mahasiswa });
+        if (DEBUG_API) console.log('Riwayat sudah ada, tidak perlu insert lagi');
+          loggerInst.log('info', ' Riwayat sudah ada, tidak perlu insert lagi', { id_mahasiswa });
         return {
           skipped: true,
-          message: '⏭️ Riwayat sudah ada, tidak perlu insert lagi',
+          message: 'Riwayat sudah ada, tidak perlu insert lagi',
           id_mahasiswa,
           _display: payload._display || { nama: payload.biodata?.nama_mahasiswa, nim: payload.riwayat?.nim }
         };
@@ -1424,4 +1535,127 @@ async getStatusMahasiswaCounts(idSemester = null, force = false) {
       }
     });
   }
+
+
+  /**
+   * GetTranskripMahasiswa — filter opsional per mahasiswa.
+   * Cache mem-first via _cachedFetch supaya aman dipanggil berulang.
+   */
+  async getTranskripMahasiswa(filter = {}, force = false) {
+    const cond = [];
+    if (filter.id_registrasi_mahasiswa)
+      cond.push(`id_registrasi_mahasiswa='${this._escSql(filter.id_registrasi_mahasiswa)}'`);
+    if (filter.id_matkul)
+      cond.push(`id_matkul='${this._escSql(filter.id_matkul)}'`);
+    const filterStr = cond.join(' AND ');
+    const key = `transkrip_${filterStr || 'all'}`;
+
+    if (force) this.invalidateCache(key);
+
+    // Bulk (tanpa filter) terlalu besar → memory-only, jangan simpan ke disk
+    const opts = filterStr ? {} : { persist: false };
+
+    return this._cachedFetch(
+      key,
+      async () => {
+        const params = { limit: filterStr ? 10000 : 100000 };
+        if (filterStr) params.filter = filterStr;
+        const res = await this.call('GetTranskripMahasiswa', params);
+        return this.extractData(res) || [];
+      },
+      5 * 60 * 1000,
+      null,
+      opts
+    );
+  }
+
+  /** Hapus semua cache transkrip (bulk + per-student) di memori & disk. */
+_invalidateTranskripAll() {
+  for (const key of [...this._memCache.keys()]) {
+    if (key.startsWith('transkrip_')) this._memCache.delete(key);
+  }
+  if (this.persistCache) {
+    Object.keys(localStorage)
+      .filter(k => k.startsWith(`${CACHE_PREFIX}transkrip_`))
+      .forEach(k => localStorage.removeItem(k));
+  }
+}
+
+  /** Trigger kalkulasi transkrip di server (per prodi + angkatan). */
+  async hitungTranskripAngkatan(params = {}) {
+    // 1) Normalisasi: bungkus ke `key: { angkatan, id_prodi }` sesuai GetDictionary
+    let payload;
+    if (params.key) {
+      payload = params;
+    } else if (params.angkatan !== undefined || params.id_prodi !== undefined) {
+      const keyData = {};
+      if (params.angkatan  !== undefined) keyData.angkatan  = params.angkatan;
+      if (params.id_prodi  !== undefined) keyData.id_prodi  = params.id_prodi;
+      payload = { key: keyData };
+      // Salin params tambahan kalau ada (filter, dsb.)
+      for (const k of Object.keys(params)) {
+        if (k !== 'angkatan' && k !== 'id_prodi') payload[k] = params[k];
+      }
+    } else {
+      payload = params;
+    }
+
+    if (DEBUG_API) console.log('[HitungTranskrip] payload:', payload);
+
+    // 2) Kirim — pakai call() bukan callSafe() supaya bisa coba format lain
+    let res = await this.call('HitungTranskripAngkatan', payload, { timeout: 5 * 60 * 1000 });
+    if (res?.error_code === 0 || res?.error_code === undefined) {
+      this._invalidateTranskripAll();
+      return res;
+    }
+
+    // 3) Fallback kalau 108: coba `angkatan` sebagai number (numeric(4))
+    if (res?.error_code === 108 && payload.key?.angkatan !== undefined
+        && /^\d+$/.test(String(payload.key.angkatan))) {
+      const retry = {
+        ...payload,
+        key: { ...payload.key, angkatan: parseInt(payload.key.angkatan, 10) },
+      };
+      if (DEBUG_API) console.log('[HitungTranskrip] retry numeric:', retry);
+      const res2 = await this.call('HitungTranskripAngkatan', retry, { timeout: 5 * 60 * 1000 });
+      if (res2?.error_code === 0 || res2?.error_code === undefined) {
+        this._invalidateTranskripAll();
+        return res2;
+      }
+
+      // 4) Fallback terakhir: flat bracket `key[angkatan]`
+      const flat = {
+        'key[angkatan]': payload.key.angkatan,
+        'key[id_prodi]': payload.key.id_prodi,
+      };
+      if (DEBUG_API) console.log('[HitungTranskrip] retry flat:', flat);
+      const res3 = await this.call('HitungTranskripAngkatan', flat);
+      if (res3?.error_code === 0 || res3?.error_code === undefined) {
+        this._invalidateTranskripAll();
+        return res3;
+      }
+
+      // Semua gagal → lempar error asli
+      throw new Error(`[${res.error_code}] ${res.error_desc || 'Unknown'}`);
+    }
+
+    throw new Error(`[${res?.error_code}] ${res?.error_desc || 'Unknown'}`);
+  }
+
+  
+
+  async insertTranskripMahasiswa(record) {
+    const { _display, ...clean } = record || {};
+    const result = await this.callSafe('InsertTranskripMahasiswa', { record: clean });
+    this._invalidateTranskripAll();
+    return result;
+  }
+
+  async deleteTranskripMahasiswa(key) {
+    const result = await this.callSafe('DeleteTranskripMahasiswa', { key });
+    this._invalidateTranskripAll();
+    return result;
+  }
+
+
 }

@@ -17,8 +17,13 @@ export async function renderDashboard(container) {
     keluar: {},
     statusList: [],
   };
+
+   // ============================================================
+  // deklarasi state modal
+  // ============================================================
   let _modalData = [];
   let _modalTitle = 'Daftar Mahasiswa';
+  let _modalShowKeluarFields = false;
 
   // ============================================================
   // HELPER: kunci unik mahasiswa (konsisten di semua sumber)
@@ -32,27 +37,79 @@ export async function renderDashboard(container) {
     prodi: m.nama_program_studi || '',
   });
 
+  // Field khusus data keluar / alumni
+  const KELUAR_FIELDS = ['no_seri_ijazah', 'sk_yudisium', 'tgl_sk_yudisium', 'id_periode_keluar'];
+
+  const toRowKeluar = (m) => ({
+    ...toRow(m),
+    no_seri_ijazah:   m.no_seri_ijazah   ?? '',
+    sk_yudisium:      m.sk_yudisium      ?? '',
+    tgl_sk_yudisium:  m.tgl_sk_yudisium  ?? '',
+    id_periode_keluar:m.id_periode_keluar?? '',
+  });
+
+  // Hanya tampilkan kolom ekstra jika ada minimal 1 nilai non-empty
+  const hasKeluarFields = (data) =>
+    Array.isArray(data) && data.some(m =>
+      KELUAR_FIELDS.some(f => m[f] !== undefined && m[f] !== null && m[f] !== '')
+    );
+
   // ============================================================
   // MODAL generik
   // ============================================================
   function _renderModalRows(data) {
     const tbody = document.getElementById('modal-tbody');
     const totalInfo = document.getElementById('modal-total-info');
+    const theadRow = document.getElementById('modal-thead-row');
     if (!tbody) return;
+
+    const baseCols = `
+      <th class="text-left px-3 py-2 font-semibold">#</th>
+      <th class="text-left px-3 py-2 font-semibold">NIM</th>
+      <th class="text-left px-3 py-2 font-semibold">Nama</th>
+      <th class="text-left px-3 py-2 font-semibold">Angkatan</th>
+      <th class="text-left px-3 py-2 font-semibold">Prodi</th>
+    `;
+    const extraHead = `
+      <th class="text-left px-3 py-2 font-semibold">No. Seri Ijazah</th>
+      <th class="text-left px-3 py-2 font-semibold">SK Yudisium</th>
+      <th class="text-left px-3 py-2 font-semibold">Tgl SK Yudisium</th>
+      <th class="text-left px-3 py-2 font-semibold">Periode Keluar</th>
+    `;
+
+    if (theadRow) {
+      theadRow.innerHTML = baseCols + (_modalShowKeluarFields ? extraHead : '');
+    }
+
+    const totalCols = _modalShowKeluarFields ? 9 : 5;
+
     if (!data || data.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="5" class="text-center py-6 text-gray-200">Tidak ada data</td></tr>';
+      tbody.innerHTML = `<tr><td colspan="${totalCols}" class="text-center py-6 text-gray-200">Tidak ada data</td></tr>`;
       if (totalInfo) totalInfo.textContent = '0 mahasiswa';
       return;
     }
-    tbody.innerHTML = data.map((m, i) => `
-      <tr class="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:text-gray-100 dark:hover:bg-gray-900">
+
+    tbody.innerHTML = data.map((m, i) => {
+      const baseCells = `
         <td class="px-3 py-2 text-gray-100">${i + 1}</td>
         <td class="px-3 py-2 font-mono">${m.nim || '-'}</td>
         <td class="px-3 py-2">${m.nama || '-'}</td>
         <td class="px-3 py-2">${m.angkatan || '-'}</td>
         <td class="px-3 py-2 text-xs">${m.prodi || '-'}</td>
-      </tr>
-    `).join('');
+      `;
+      const extraCells = _modalShowKeluarFields ? `
+        <td class="px-3 py-2 font-mono text-xs">${m.no_seri_ijazah || '-'}</td>
+        <td class="px-3 py-2 font-mono text-xs">${m.sk_yudisium || '-'}</td>
+        <td class="px-3 py-2 text-xs">${m.tgl_sk_yudisium || '-'}</td>
+        <td class="px-3 py-2 text-xs">${m.id_periode_keluar || '-'}</td>
+      ` : '';
+      return `
+        <tr class="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:text-gray-100 dark:hover:bg-gray-900">
+          ${baseCells}${extraCells}
+        </tr>
+      `;
+    }).join('');
+
     if (totalInfo) totalInfo.textContent = `${data.length} mahasiswa`;
   }
 
@@ -61,6 +118,7 @@ export async function renderDashboard(container) {
     if (!modal) return;
     _modalTitle = title;
     _modalData = data || [];
+    _modalShowKeluarFields = hasKeluarFields(_modalData);
 
     const titleEl = document.getElementById('modal-title');
     if (titleEl) titleEl.textContent = title;
@@ -100,14 +158,32 @@ export async function renderDashboard(container) {
       alert('Tidak ada data untuk di-export');
       return;
     }
-    const headers = ['No', 'NIM', 'Nama', 'Angkatan', 'Prodi'];
-    const rows = _modalData.map((m, i) => [
-      i + 1,
-      m.nim || '',
-      `"${(m.nama || '').replace(/"/g, '""')}"`,
-      m.angkatan || '',
-      `"${(m.prodi || '').replace(/"/g, '""')}"`,
-    ]);
+
+    const baseHeaders = ['No', 'NIM', 'Nama', 'Angkatan', 'Prodi'];
+    const extraHeaders = ['No. Seri Ijazah', 'SK Yudisium', 'Tgl SK Yudisium', 'Periode Keluar'];
+    const headers = _modalShowKeluarFields ? [...baseHeaders, ...extraHeaders] : baseHeaders;
+
+    const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+
+    const rows = _modalData.map((m, i) => {
+      const base = [
+        i + 1,
+        esc(m.nim),
+        esc(m.nama),
+        esc(m.angkatan),
+        esc(m.prodi),
+      ];
+      if (_modalShowKeluarFields) {
+        base.push(
+          esc(m.no_seri_ijazah),
+          esc(m.sk_yudisium),
+          esc(m.tgl_sk_yudisium),
+          esc(m.id_periode_keluar),
+        );
+      }
+      return base;
+    });
+
     const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
     const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8' });
     const a = document.createElement('a');
@@ -155,14 +231,6 @@ export async function renderDashboard(container) {
       `Mahasiswa ${jenisNama}`,
       'Status keluar (alumni)',
       _cache.keluar[jenisKey] || []
-    );
-  };
-
-  window.__showKeluar = (jenisKey, jenisNama) => {
-    window.__showMahasiswaList(
-        `Mahasiswa ${jenisNama}`,
-        'Status keluar (alumni)',
-        _cache.keluar[jenisKey] || []
     );
   };
 
@@ -312,7 +380,7 @@ export async function renderDashboard(container) {
       <div class="flex-1 overflow-auto">
         <table class="w-full text-sm">
           <thead class="sticky top-0 bg-gray-100 dark:text-gray-200 dark:bg-gray-900 z-10">
-            <tr>
+            <tr id="modal-thead-row">
               <th class="text-left px-3 py-2 font-semibold">#</th>
               <th class="text-left px-3 py-2 font-semibold">NIM</th>
               <th class="text-left px-3 py-2 font-semibold">Nama</th>
@@ -560,28 +628,57 @@ export async function renderDashboard(container) {
 
     container.innerHTML = JENIS.map(j => `
       <div class="stat-card p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition"
-           onclick="window.__showKeluar('${j.key}', '${j.nama}')"
-           title="Klik untuk lihat daftar">
+          onclick="window.__showKeluar('${j.key}', '${j.nama}')"
+          title="Klik untuk lihat daftar">
         <div class="text-sm font-medium dark:text-gray-400">${j.nama}</div>
         <div class="text-2xl font-bold mt-1 ${j.color}" data-jenis="${j.key}">—</div>
       </div>
     `).join('');
 
-    const listMhs = await api.getListMahasiswa();
-    const allMhs = Array.isArray(listMhs) ? listMhs : (listMhs?.data || []);
+    // Lazy-load getListMahasiswa hanya jika fallback dibutuhkan
+    let _allMhsCache = null;
+    const getAllMhs = async () => {
+      if (_allMhsCache) return _allMhsCache;
+      const listMhs = await api.getListMahasiswa();
+      _allMhsCache = Array.isArray(listMhs) ? listMhs : (listMhs?.data || []);
+      return _allMhsCache;
+    };
 
     await Promise.all(JENIS.map(async j => {
-      try {
-        const count = await api.getCountMahasiswaLulusDO(j.key);
-        const el = container.querySelector(`[data-jenis="${j.key}"]`);
-        if (el) el.textContent = count == null ? '—' : count.toLocaleString('id-ID');
+      const el = container.querySelector(`[data-jenis="${j.key}"]`);
+      const setCount = (n) => {
+        if (el) el.textContent = (n == null || isNaN(n)) ? '—' : Number(n).toLocaleString('id-ID');
+      };
 
+      // ── 1) Coba endpoint detail (bawa field lengkap)
+      try {
+        const detail = await api.getMahasiswaLulusDO(j.key);
+        const arr = Array.isArray(detail) ? detail : (detail?.data || []);
+        if (arr.length) {
+          _cache.keluar[j.key] = arr.map(toRowKeluar)
+            .sort((a, b) => (a.nim || '').localeCompare(b.nim || ''));
+          setCount(arr.length);   // <-- WAJIB: pakai panjang detail, biar konsisten dengan isi modal
+          return;
+        }
+      } catch (err) {
+        console.warn(`getMahasiswaLulusDO(${j.key}) gagal, fallback:`, err);
+      }
+
+      // ── 2) Fallback: count API + filter manual dari list mahasiswa
+      try {
+        const [count, allMhs] = await Promise.all([
+          api.getCountMahasiswaLulusDO(j.key),
+          getAllMhs(),
+        ]);
         _cache.keluar[j.key] = allMhs
           .filter(m => String(m.id_status_mahasiswa ?? '').trim() === j.id)
-          .map(toRow);
+          .map(toRowKeluar)
+          .sort((a, b) => (a.nim || '').localeCompare(b.nim || ''));
+        setCount(count ?? _cache.keluar[j.key].length);
       } catch (e) {
-        const el = container.querySelector(`[data-jenis="${j.key}"]`);
-        if (el) el.textContent = '—';
+        console.warn(`fallback keluar ${j.key} gagal:`, e);
+        setCount(null);
+        _cache.keluar[j.key] = [];
       }
     }));
   };
@@ -602,15 +699,20 @@ export async function renderDashboard(container) {
   const today = new Date().toISOString().slice(0, 10);
   const logs = logger.getLogs();
   const todayLogs = logs.filter(l => String(l.timestamp).slice(0, 10) === today);
-  const successToday = todayLogs.filter(l =>
-    l.level === 'success' || (l.level === 'info' && String(l.message).startsWith('[Success]'))
-  ).length;
-  const failedToday = todayLogs.filter(l =>
-    l.level === 'error' || l.level === 'warning'
-  ).length;
+  // Hitung dari summary "Import selesai" — 1 entry per sesi import
+  const importSessions = todayLogs.filter(l => l.message === 'Import selesai');
+
+  const successToday = importSessions
+    .reduce((sum, l) => sum + (Number(l.details?.success) || 0), 0);
+  const failedToday = importSessions
+    .reduce((sum, l) => sum + (Number(l.details?.failed) || 0), 0);
+  const skippedToday = importSessions
+    .reduce((sum, l) => sum + (Number(l.details?.skipped) || 0), 0);
+
   document.getElementById('import-today').innerHTML = `
     <span class="text-green-500">✅ Sukses: ${successToday}</span> &nbsp;
-    <span class="text-red-500">❌ Gagal: ${failedToday}</span>
+    <span class="text-red-500">❌ Gagal: ${failedToday}</span> &nbsp;
+    <span class="text-gray-500">⏭️ Dilewati: ${skippedToday}</span>
   `;
 
   // Aktivitas terakhir
@@ -621,7 +723,7 @@ export async function renderDashboard(container) {
   } else {
     activityDiv.innerHTML = recent.map(l => {
       const time = new Date(l.timestamp).toLocaleTimeString('id-ID', { hour12: false });
-      return `<div class="py-1"><span class="text-gray-400">${time}</span> ${l.message}</div>`;
+      return `<div class="py-1"><span class="text-gray-400">${time}</span> ${l.message} </div>`;
     }).join('');
   }
 }
