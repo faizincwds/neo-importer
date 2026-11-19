@@ -1,5 +1,6 @@
 import { API_BASE, STORAGE_KEYS, DEBUG_API, CACHE_PREFIX, CACHE_TTL } from './config.js';
 import { loggerInst } from './loggerView.js';
+import { sanitizeText } from './utils.js';
 
 export class NeoFeederAPI {
   constructor() {
@@ -18,7 +19,7 @@ export class NeoFeederAPI {
     localStorage.setItem(STORAGE_KEYS.TOKEN, token);
   }
 
-  async call(method, params = {}) {
+  async call(method, params = {}, options = {}) {
     const baseUrl = localStorage.getItem(STORAGE_KEYS.API_URL) || 'http://localhost:3003';
     const apiType = localStorage.getItem(STORAGE_KEYS.API_TYPE) || 'live2.php';
     const url = `${baseUrl}/ws/${apiType}`;   // <-- gunakan URL lengkap
@@ -33,6 +34,7 @@ export class NeoFeederAPI {
     const isWrite = /^(Insert|Update|Delete|Set)/.test(method);
 
     if (DEBUG_API) {
+      console.log(`[Debug API WARN] Request ${method}`, { payload });
       console.log(`[Debug API] Request ${method}`, { ...params });
       console.log(`[API Request] ${method}`, { url, ...params});
     }
@@ -46,8 +48,8 @@ export class NeoFeederAPI {
     }
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000);
-
+    const timeout = options.timeout || 30000;   // ← default 30s, override-able
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
     try {
       const response = await fetch(url, {
         method: 'POST',
@@ -151,10 +153,9 @@ export class NeoFeederAPI {
 
       clearTimeout(timeoutId);
       if (error.name === 'AbortError') {
-        // Catat timeout
-        loggerInst.log('error', `Permintaan dibatalkan: Timeout 30 detik untuk ${method}`);
-        if (DEBUG_API) console.error(`[API] Timeout untuk ${method}`);
-        throw new Error(`Timeout setelah 30 detik untuk ${method}`);
+        loggerInst.log('error', `Permintaan dibatalkan: Timeout ${Math.round(timeout / 1000)} detik untuk ${method}`);
+        if (DEBUG_API) console.error(`[API] Timeout ${timeout}ms untuk ${method}`);
+        throw new Error(`Timeout setelah ${Math.round(timeout / 1000)} detik untuk ${method}`);
       }
 
       // Deteksi error jaringan (server mati / port salah / API tidak aktif)
@@ -258,17 +259,6 @@ export class NeoFeederAPI {
     } catch (e) { return null; }
   }
 
-  // _setCache(key, data, count) {
-  //   const entry = { data, count, timestamp: Date.now() };
-  //   this._memCache.set(key, entry);
-  //   if (!this.persistCache) return;    // ← skip localStorage saat import
-  //   try {
-  //     localStorage.setItem(`${CACHE_PREFIX}${key}`, JSON.stringify(entry));
-  //   } catch (e) {
-  //     console.warn('Cache save failed (quota?), skip', e);
-  //   }
-  // }
-
   _setCache(key, data, count, opts = {}) {
     const entry = { data, count, timestamp: Date.now() };
     this._memCache.set(key, entry);                 // mem cache SELALU diisi
@@ -294,21 +284,32 @@ export class NeoFeederAPI {
     try {
       localStorage.setItem(`${CACHE_PREFIX}${key}`, raw);
     } catch (e) {
-      if (e.name === 'QuotaExceededError' || /quota/i.test(e.message || '')) {
-        if (DEBUG_API) console.warn(`[CACHE] quota penuh saat simpan ${key} → bersihkan cache persist lama`);
-        // Hapus cache persist lama (mem cache tetap hidup, jadi request berikutnya masih hit)
-        Object.keys(localStorage)
-          .filter(k => k.startsWith(CACHE_PREFIX))
-          .forEach(k => localStorage.removeItem(k));
-        try {
-          localStorage.setItem(`${CACHE_PREFIX}${key}`, raw);
-          if (DEBUG_API) console.log(`[CACHE] ${key} berhasil disimpan setelah cleanup`);
-          return;
-        } catch { /* masih gagal → skip */ }
-      } else {
-        console.warn('Cache save failed, skip', e);
+        if (e.name === 'QuotaExceededError' || /quota/i.test(e.message || '')) {
+          if (DEBUG_API) console.warn(`[CACHE] quota penuh saat simpan ${key} → bersihkan cache terlama`);
+
+          // Hapus cache TERLAMA dulu (bukan semua)
+          const candidates = Object.keys(localStorage)
+            .filter(k => k.startsWith(CACHE_PREFIX) && k !== `${CACHE_PREFIX}${key}`)
+            .map(k => {
+              try {
+                const p = JSON.parse(localStorage.getItem(k));
+                return { key: k, ts: p.timestamp || 0 };
+              } catch { return { key: k, ts: 0 }; }
+            })
+            .sort((a, b) => a.ts - b.ts);
+
+          for (const c of candidates) {
+            localStorage.removeItem(c.key);
+            try {
+              localStorage.setItem(`${CACHE_PREFIX}${key}`, raw);
+              if (DEBUG_API) console.log(`[CACHE] ${key} disimpan setelah hapus ${candidates.length - candidates.indexOf(c)} cache lama`);
+              return;
+            } catch { /* coba berikutnya */ }
+          }
+        } else {
+          console.warn('Cache save failed, skip', e);
+        }
       }
-    }
   }
 
   invalidateCache(key) {
@@ -459,7 +460,7 @@ export class NeoFeederAPI {
 
   async getDetailMataKuliah(kode_mk) {
     const res = await this.call('GetDetailMataKuliah', {
-      filter: `kode_mata_kuliah = '${this._escSql(kode_mk)}'`,   // ← pakai _escSql
+      filter: `kode_mata_kuliah = '${kode_mk}'`,   // ← pakai _escSql
       limit: 1
     });
     const data = this.extractData(res);
@@ -470,7 +471,7 @@ export class NeoFeederAPI {
 
   async getDetailKurikulum(kode_kurikulum) {
     const res = await this.call('GetDetailKurikulum', {
-      filter: `kode_kurikulum = '${this._escSql(kode_kurikulum)}'`,
+      filter: `kode_kurikulum = '${kode_kurikulum}'`,
       limit: 1
     });
     const data = this.extractData(res);
@@ -481,7 +482,7 @@ export class NeoFeederAPI {
 
   async getDetailKelasKuliah(filter = {}) {
     const conditions = [];
-    if (filter.id_semester) conditions.push(`id_semester = '${filter.id_semester}'`);
+    if (filter.id_semester) conditions.push(`id_semester = '${sanitizeText(filter.id_semester)}'`);
     if (filter.kode_mata_kuliah) conditions.push(`kode_mata_kuliah = '${filter.kode_mata_kuliah}'`);
     if (filter.nama_kelas_kuliah) conditions.push(`nama_kelas_kuliah = '${filter.nama_kelas_kuliah}'`);
     const filterStr = conditions.length ? conditions.join(' and ') : '';
@@ -523,15 +524,21 @@ export class NeoFeederAPI {
   }
 
   // ✅ Cache: Mahasiswa Lulus/DO
-  async getDetailMahasiswaLulusDO(force = false) {
-    if (force) this.invalidateCache('lulusdo');
-    return this._cachedFetch(
-      'lulusdo',
-      async () => this.extractData(await this.call('GetDetailMahasiswaLulusDO')),
-      CACHE_TTL.mahasiswalulusdo,
-      () => this._count('GetCountMahasiswaLulusDO')
-    );
-  }
+ async getDetailMahasiswaLulusDO(force = false) {
+  if (force) this.invalidateCache('mahasiswalulusdo');
+  return this._cachedFetch(
+    'mahasiswalulusdo',
+    async () => {
+      const res = await this.call('GetDetailMahasiswaLulusDO');
+      if (res?.error_code && res.error_code !== 0) {
+        throw new Error(`[${res.error_code}] ${res.error_desc || 'GetDetailMahasiswaLulusDO gagal'}`);
+      }
+      return this.extractData(res) || [];
+    },
+    CACHE_TTL.mahasiswalulusdo || 5 * 60 * 1000,
+    () => this._count('GetCountMahasiswaLulusDO')
+  );
+}
 
   /**
    * Ambil daftar mahasiswa lulus/DO difilter per jenis keluar.
@@ -891,7 +898,7 @@ async getStatusMahasiswaCounts(idSemester = null, force = false) {
 
   async getListKelasKuliah(filter = {}) {
     const conditions = [];
-    if (filter.id_semester) conditions.push(`id_semester = '${filter.id_semester}'`);
+    if (filter.id_semester) conditions.push(`id_semester = '${sanitizeText(filter.id_semester)}'`);
     if (filter.kode_mata_kuliah) conditions.push(`kode_mata_kuliah = '${filter.kode_mata_kuliah}'`);
     if (filter.nama_kelas_kuliah) conditions.push(`nama_kelas_kuliah = '${filter.nama_kelas_kuliah}'`);
     const filterStr = conditions.length ? conditions.join(' and ') : '';
@@ -901,7 +908,7 @@ async getStatusMahasiswaCounts(idSemester = null, force = false) {
 
   async getListPesertaKelasKuliah(filter = {}) {
     const conditions = [];
-    if (filter.id_kelas_kuliah) conditions.push(`id_kelas_kuliah = '${filter.id_kelas_kuliah}'`);
+    if (filter.id_kelas_kuliah) conditions.push(`id_kelas_kuliah = '${sanitizeText(filter.id_kelas_kuliah)}'`);
     if (filter.nim) conditions.push(`nim = '${filter.nim}'`);
     const filterStr = conditions.length ? conditions.join(' and ') : '';
     const res = await this.call('GetListPesertaKelasKuliah', { filter: filterStr, limit: 1 });
@@ -922,17 +929,194 @@ async getStatusMahasiswaCounts(idSemester = null, force = false) {
     return this.extractData(res);
   }
 
-  // api.js — tambahan opsional
   async getAllRiwayatPendidikanMahasiswa(force = false) {
     const key = 'riwayat_all';
     if (force) this.invalidateCache(key);
     return this._cachedFetch(key, async () => {
       const res = await this.call('GetListRiwayatPendidikanMahasiswa', {
         limit: 100000,
-      });
+      }, { timeout: 90000 });   // 90 detik
+      
+      if (res?.error_code && res.error_code !== 0) {
+        throw new Error(`[${res.error_code}] ${res.error_desc || 'GetListRiwayatPendidikanMahasiswa gagal'}`);
+      }
+
       return this.extractData(res) || [];
     }, 10 * 60 * 1000);
   }
+
+
+// ============ RAW NILAI (untuk deteksi retake) ============
+
+async getRiwayatNilaiMahasiswa(filter = {}, force = false) {
+  const cond = [];
+  if (filter.id_registrasi_mahasiswa)
+    cond.push(`id_registrasi_mahasiswa='${sanitizeText(filter.id_registrasi_mahasiswa)}'`);
+  const filterStr = cond.join(' AND ');
+  const key = `riwayat_nilai_${filterStr || 'all'}`;
+  if (force) this.invalidateCache(key);
+
+  return this._cachedFetch(key, async () => {
+    const res = await this.call('GetRiwayatNilaiMahasiswa', {
+      filter: filterStr, limit: 100000,
+    });
+    if (res?.error_code && res.error_code !== 0) {
+      throw new Error(`[${res.error_code}] ${res.error_desc || 'GetRiwayatNilaiMahasiswa gagal'}`);
+    }
+    return this.extractData(res) || [];
+  }, 5 * 60 * 1000);
+}
+
+async getDetailNilaiPerkuliahanKelas(filter = {}, force = false) {
+  const cond = [];
+  if (filter.id_registrasi_mahasiswa)
+    cond.push(`id_registrasi_mahasiswa='${sanitizeText(filter.id_registrasi_mahasiswa)}'`);
+  if (filter.id_semester)
+    cond.push(`id_semester='${sanitizeText(filter.id_semester)}'`);
+  const filterStr = cond.join(' AND ');
+  const key = `detail_nilai_kelas_${filterStr || 'all'}`;
+  if (force) this.invalidateCache(key);
+
+  return this._cachedFetch(key, async () => {
+    const res = await this.call('GetDetailNilaiPerkuliahanKelas', {
+      filter: filterStr, limit: 100000,
+    });
+    if (res?.error_code && res.error_code !== 0) {
+      throw new Error(`[${res.error_code}] ${res.error_desc || 'GetDetailNilaiPerkuliahanKelas gagal'}`);
+    }
+    return this.extractData(res) || [];
+  }, 5 * 60 * 1000);
+}
+
+async getNilaiTransferPendidikanMahasiswa(filter = {}, force = false) {
+  const cond = [];
+  if (filter.id_registrasi_mahasiswa)
+    cond.push(`id_registrasi_mahasiswa='${sanitizeText(filter.id_registrasi_mahasiswa)}'`);
+  const filterStr = cond.join(' AND ');
+  const key = `nilai_transfer_${filterStr || 'all'}`;
+  if (force) this.invalidateCache(key);
+
+  return this._cachedFetch(key, async () => {
+    const res = await this.call('GetNilaiTransferPendidikanMahasiswa', {
+      filter: filterStr, limit: 100000,
+    });
+    if (res?.error_code && res.error_code !== 0) {
+      throw new Error(`[${res.error_code}] ${res.error_desc || 'GetNilaiTransferPendidikanMahasiswa gagal'}`);
+    }
+    return this.extractData(res) || [];
+  }, 5 * 60 * 1000);
+}
+
+async getListKonversiKampusMerdeka(filter = {}, force = false) {
+  const cond = [];
+  if (filter.id_konversi_aktivitas)
+    cond.push(`id_konversi_aktivitas='${sanitizeText(filter.id_konversi_aktivitas)}'`);
+  if (filter.id_matkul)
+    cond.push(`id_matkul='${sanitizeText(filter.id_matkul)}'`);
+  if (filter.id_aktivitas)
+    cond.push(`id_aktivitas='${sanitizeText(filter.id_aktivitas)}'`);
+  if (filter.id_anggota)
+    cond.push(`id_anggota='${sanitizeText(filter.id_anggota)}'`);
+  if (filter.nim)
+    cond.push(`nim='${filter.nim}'`);
+  if (filter.id_semester)
+    cond.push(`id_semester='${sanitizeText(filter.id_semester)}'`);
+
+  const filterStr = cond.join(' AND ');
+  const key = `konversi_km_${filterStr || 'all'}`;
+  if (force) this.invalidateCache(key);
+
+  return this._cachedFetch(key, async () => {
+    const params = { limit: 100000 };
+    if (filterStr) params.filter = filterStr;
+    const res = await this.call('GetListKonversiKampusMerdeka', params);
+    if (res?.error_code && res.error_code !== 0) {
+      throw new Error(`[${res.error_code}] ${res.error_desc || 'GetListKonversiKampusMerdeka gagal'}`);
+    }
+    return this.extractData(res) || [];
+  }, 5 * 60 * 1000);
+}
+
+/**
+ * Ambil SEMUA nilai raw untuk satu mahasiswa (lintas sumber).
+ * Gabungkan: RiwayatNilai + DetailNilaiKelas + Transfer + Konversi.
+ * Fallback terakhir: GetTranskripMahasiswa (deduped).
+ *
+ * @returns {Promise<{ records: Array, source: string, deduped: boolean }>}
+ */
+async getAllRawNilaiMahasiswa(regId, options = {}) {
+  const { nim = '', force = false, includeKonversi = true } = options;
+  const errors = [];
+
+  // 1) Kelas & Transfer (pakai id_registrasi_mahasiswa — valid)
+  const [kelas, transfer] = await Promise.allSettled([
+    this.getDetailNilaiPerkuliahanKelas({ id_registrasi_mahasiswa: regId }, force),
+    this.getNilaiTransferPendidikanMahasiswa({ id_registrasi_mahasiswa: regId }, force),
+  ]);
+
+  const all = [];
+  if (kelas.status === 'fulfilled' && Array.isArray(kelas.value)) {
+    kelas.value.forEach(r => all.push({ ...r, _source: 'kelas' }));
+  } else if (kelas.status === 'rejected') {
+    errors.push('DetailNilaiPerkuliahanKelas: ' + (kelas.reason?.message || '?'));
+  }
+
+  if (transfer.status === 'fulfilled' && Array.isArray(transfer.value)) {
+    transfer.value.forEach(r => all.push({ ...r, _source: 'transfer' }));
+  } else if (transfer.status === 'rejected') {
+    errors.push('NilaiTransferPendidikanMahasiswa: ' + (transfer.reason?.message || '?'));
+  }
+
+  // 2) Konversi — filter pakai nim (BUKAN id_registrasi_mahasiswa)
+  let konversiCount = 0;
+  if (includeKonversi && nim) {
+    try {
+      const konversi = await this.getListKonversiKampusMerdeka({ nim }, force);
+      if (Array.isArray(konversi) && konversi.length > 0) {
+        konversi.forEach(r => all.push({
+          ...r,
+          id_registrasi_mahasiswa: regId,   // ← inject dari context
+          _source: 'konversi',
+        }));
+        konversiCount = konversi.length;
+      }
+    } catch (e) {
+      // Skip gracefully — konversi opsional, tidak gagalkan seluruh proses
+      errors.push('ListKonversiKampusMerdeka: ' + (e.message || '?'));
+      if (DEBUG_API) console.warn('[RawNilai] konversi gagal (skip):', e.message);
+    }
+  }
+
+  if (all.length > 0) {
+    if (DEBUG_API) {
+      console.log(
+        `[RawNilai] combined: ${all.length} record ` +
+        `(kelas=${kelas.value?.length || 0}, ` +
+        `transfer=${transfer.value?.length || 0}, ` +
+        `konversi=${konversiCount})`
+      );
+    }
+    return { records: all, source: 'Kelas + Transfer + Konversi', errors };
+  }
+
+  // Fallback: Riwayat (tetap tanpa GetTranskripMahasiswa)
+  try {
+    const recs = await this.getRiwayatNilaiMahasiswa({ id_registrasi_mahasiswa: regId }, force);
+    if (Array.isArray(recs) && recs.length > 0) {
+      return {
+        records: recs.map(r => ({ ...r, _source: 'riwayat' })),
+        source: 'GetRiwayatNilaiMahasiswa',
+        errors,
+      };
+    }
+  } catch (e) {
+    errors.push('riwayat: ' + e.message);
+  }
+
+  throw new Error(
+    'Tidak ada sumber raw nilai yang tersedia.\n' + errors.join('\n')
+  );
+}
 
   async getJenisEvaluasi() {
     const res = await this.call('GetJenisEvaluasi');
@@ -962,8 +1146,8 @@ async getStatusMahasiswaCounts(idSemester = null, force = false) {
 
   async getDosenPengajarKelasKuliah(filter = {}) {
     const conditions = [];
-    if (filter.id_semester) conditions.push(`id_semester = '${filter.id_semester}'`);
-    if (filter.id_kelas_kuliah) conditions.push(`id_kelas_kuliah = '${filter.id_kelas_kuliah}'`);
+    if (filter.id_semester) conditions.push(`id_semester = '${sanitizeText(filter.id_semester)}'`);
+    if (filter.id_kelas_kuliah) conditions.push(`id_kelas_kuliah = '${sanitizeText(filter.id_kelas_kuliah)}'`);
     if (filter.nuptk) conditions.push(`nuptk = '${filter.nuptk}'`);
     const filterStr = conditions.length ? conditions.join(' and ') : '';
     const res = await this.call('GetDosenPengajarKelasKuliah', { filter: filterStr, limit: 1 });
@@ -1061,11 +1245,11 @@ async getStatusMahasiswaCounts(idSemester = null, force = false) {
   async cariMahasiswaLengkap({ nik, email, nama, jenis_kelamin, tanggal_lahir }) {
     let biodataArr = null;
     if (nik) {
-      const res = await this.call('GetBiodataMahasiswa', { filter: `nik = '${nik}'` });
+      const res = await this.call('GetBiodataMahasiswa', { filter: `nik = '${sanitizeText(nik)}'` });
       biodataArr = this.extractData(res);
     }
     if ((!biodataArr || (Array.isArray(biodataArr) && biodataArr.length === 0)) && email) {
-      const res = await this.call('GetBiodataMahasiswa', { filter: `email = '${email}'` });
+      const res = await this.call('GetBiodataMahasiswa', { filter: `email = '${sanitizeText(email)}'` });
       biodataArr = this.extractData(res);
     }
 
@@ -1079,9 +1263,14 @@ async getStatusMahasiswaCounts(idSemester = null, force = false) {
     const filterConditions = [];
     if (biodata.nama_mahasiswa) filterConditions.push(`nama_mahasiswa LIKE '%${biodata.nama_mahasiswa}%'`);
     if (biodata.jenis_kelamin) filterConditions.push(`jenis_kelamin = '${biodata.jenis_kelamin}'`);
-    if (biodata.tanggal_lahir) {
-      filterConditions.push(`tanggal_lahir = '${biodata.tanggal_lahir}'`);
-    }
+    if (biodata.tanggal_lahir) filterConditions.push(`tanggal_lahir = '${biodata.tanggal_lahir}'`);
+
+    // const filterConditions = [];
+    // if (biodata.nama_mahasiswa) filterConditions.push(`nama_mahasiswa LIKE '%${biodata.nama_mahasiswa}%'`);
+    // if (biodata.jenis_kelamin) filterConditions.push(`jenis_kelamin = '${biodata.jenis_kelamin}'`);
+    // if (biodata.tanggal_lahir) {
+    //   filterConditions.push(`tanggal_lahir = '${biodata.tanggal_lahir}'`);
+    // }
     const filterStr = filterConditions.join(' AND ');
     const res = await this.call('GetListMahasiswa', { filter: filterStr, limit: 1 });
     const listData = this.extractData(res);
@@ -1101,9 +1290,9 @@ async getStatusMahasiswaCounts(idSemester = null, force = false) {
   async cariMahasiswa(filter = {}) {
     const conditions = [];
     if (filter.nama) conditions.push(`nama_mahasiswa LIKE '%${filter.nama}%'`);
-    if (filter.nik) conditions.push(`nik = '${filter.nik}'`);
-    if (filter.email) conditions.push(`email = '${filter.email}'`);
-    if (filter.id_mahasiswa) conditions.push(`id_mahasiswa = '${filter.id_mahasiswa}'`);
+    if (filter.nik) conditions.push(`nik = '${sanitizeText(filter.nik)}'`);
+    if (filter.email) conditions.push(`email = '${sanitizeText(filter.email)}'`);
+    if (filter.id_mahasiswa) conditions.push(`id_mahasiswa = '${sanitizeText(filter.id_mahasiswa)}'`);
     const filterStr = conditions.length ? conditions.join(' AND ') : '';
     const res = await this.call('GetListMahasiswa', { filter: filterStr, limit: 1 });
     return this.extractData(res);
@@ -1291,7 +1480,7 @@ async getStatusMahasiswaCounts(idSemester = null, force = false) {
   // Mencari aktivitas berdasarkan judul, prodi, dan semester
   async cariAktivitasExisting(judul, id_prodi, id_semester) {
     if (!judul || !id_prodi || !id_semester) return null;
-    const filterStr = `id_prodi = '${id_prodi}' AND id_semester = '${id_semester}' AND judul LIKE '%${judul}%'`;
+    const filterStr = `id_prodi = '${sanitizeText(id_prodi)}' AND id_semester = '${sanitizeText(id_semester)}' AND judul LIKE '%${judul}%'`;
     const res = await this.call('GetListAktivitasMahasiswa', { filter: filterStr, limit: 1 });
     const data = this.extractData(res);
     return Array.isArray(data) ? data[0] : data;
@@ -1412,7 +1601,6 @@ async getStatusMahasiswaCounts(idSemester = null, force = false) {
     if (res.data && typeof res.data === 'string') return res.data;
     throw new Error('Gagal mendapatkan id_aktivitas setelah insert');
 
-    if (DEBUG_API) console.log('ID AK:', data.id_aktivitas);
   }
 
   // Insert Anggota Aktivitas Mahasiswa
@@ -1544,9 +1732,9 @@ async getStatusMahasiswaCounts(idSemester = null, force = false) {
   async getTranskripMahasiswa(filter = {}, force = false) {
     const cond = [];
     if (filter.id_registrasi_mahasiswa)
-      cond.push(`id_registrasi_mahasiswa='${this._escSql(filter.id_registrasi_mahasiswa)}'`);
+      cond.push(`id_registrasi_mahasiswa='${sanitizeText(filter.id_registrasi_mahasiswa)}'`);
     if (filter.id_matkul)
-      cond.push(`id_matkul='${this._escSql(filter.id_matkul)}'`);
+      cond.push(`id_matkul='${sanitizeText(filter.id_matkul)}'`);
     const filterStr = cond.join(' AND ');
     const key = `transkrip_${filterStr || 'all'}`;
 
@@ -1644,15 +1832,113 @@ _invalidateTranskripAll() {
 
   
 
-  async insertTranskripMahasiswa(record) {
-    const { _display, ...clean } = record || {};
-    const result = await this.callSafe('InsertTranskripMahasiswa', { record: clean });
-    this._invalidateTranskripAll();
-    return result;
+async insertTranskripMahasiswa(record) {
+  const { _display, ...clean } = record || {};
+
+  // === VALIDASI KLIEN — tangkap bug sebelum kirim ke server ===
+  if (!clean.id_registrasi_mahasiswa) {
+    throw new Error(
+      `id_registrasi_mahasiswa kosong di payload. ` +
+      `Record: ${JSON.stringify(clean)}`
+    );
+  }
+  if (!clean.id_matkul) {
+    throw new Error(`id_matkul kosong di payload. Record: ${JSON.stringify(clean)}`);
+  }
+  if (clean.smt_diambil === undefined || clean.smt_diambil === null || clean.smt_diambil === '') {
+    throw new Error(`smt_diambil kosong. Record: ${JSON.stringify(clean)}`);
+  }
+  const hasSource = clean.id_kelas_kuliah || clean.id_nilai_transfer || clean.id_konversi_aktivitas;
+  if (!hasSource) {
+    throw new Error(`Butuh salah satu: id_kelas_kuliah / id_nilai_transfer / id_konversi_aktivitas. Record: ${JSON.stringify(clean)}`);
   }
 
+  // === Normalisasi ===
+  const normalized = {};
+  for (const k of Object.keys(clean)) {
+    const v = clean[k];
+    if (v === null || v === undefined || v === '') continue;
+    normalized[k] = (k === 'smt_diambil') ? Number(v) : v;
+  }
+
+  // === 4 format kandidat, dicoba berurutan ===
+  
+  // const result = await this.insertTranskripMahasiswa( { record: normalized } );
+  const attempts = [
+    {
+      name: 'record sebagai object',
+      payload: { record: normalized },
+    },
+    // {
+    //   name: 'record sebagai object',
+    //   record: normalized,
+    // },
+   
+    // {
+    //   name: 'record sebagai JSON string',
+    //   payload: { record: JSON.stringify(normalized) },
+    // },
+    // {
+    //   name: 'flat record[k]',
+    //   payload: (() => {
+    //     const flat = {};
+    //     for (const [k, v] of Object.entries(normalized)) {
+    //       flat[`record[${k}]`] = v;
+    //     }
+    //     return flat;
+    //   })(),
+    // },
+    // {
+    //   name: 'flat langsung (tanpa wrapper)',
+    //   payload: normalized,
+    // },
+  ];
+
+  const errs = [];
+
+  for (const att of attempts) {
+    if (DEBUG_API) console.log(`[InsertTranskrip] coba: ${att.name}`, att.payload);
+
+    try {
+      const res = await this.call('InsertTranskripMahasiswa', att.payload);
+
+      if (res?.error_code === 0 || res?.error_code === undefined) {
+        if (DEBUG_API) console.log(`[InsertTranskrip] ✅ sukses via "${att.name}"`);
+        this._invalidateTranskripAll();
+        return res;
+      }
+
+      errs.push(`${att.name}: [${res?.error_code}] ${res?.error_desc || ''}`);
+      if (DEBUG_API) console.warn(`[InsertTranskrip] ❌ ${att.name}: [${res?.error_code}] ${res?.error_desc}`);
+
+      // Retry untuk error yang kemungkinan besar soal FORMAT,
+      // bukan bisnis-logika (mis. 401 token, 500 server)
+      const retryCodes = [15, 108, 109, 111, 400];
+      if (!retryCodes.includes(Number(res?.error_code))) break;
+
+    } catch (e) {
+      errs.push(`${att.name}: ${e.message}`);
+    }
+  }
+
+  throw new Error(
+    `InsertTranskripMahasiswa gagal di ${errs.length} format.\n\n` +
+    errs.join('\n') +
+    `\n\nKalau semua gagal, buka sandbox2.php di case 'InsertTranskripMahasiswa' ` +
+    `dan lihat bagaimana \$input['record'] di-decode.`
+  );
+}
+
+
+
   async deleteTranskripMahasiswa(key) {
-    const result = await this.callSafe('DeleteTranskripMahasiswa', { key });
+    const result = await this.callSafe('DeleteTranskripMahasiswa', 
+      { key: {
+        id_registrasi_mahasiswa: key.id_registrasi_mahasiswa,
+        id_matkul: key.id_matkul
+      }
+
+       });
     this._invalidateTranskripAll();
     return result;
   }

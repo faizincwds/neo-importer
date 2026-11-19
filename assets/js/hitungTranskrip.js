@@ -4,26 +4,37 @@ import { DEBUG_API } from './config.js';
 import { Logger } from './logger.js';
 
 /* ============================================================
- *  NILAI HURUF
+ *  KONSTANTA
  * ============================================================ */
 const GRADE_POINTS = {
   'A': 4.00, 'A-': 3.75,
-  'B+': 3.25, 'B': 3.00, 'B-': 2.75,
-  'C+': 2.25, 'C': 2.00, 'C-': 1.75,
-  'D': 1.00, 'E': 0.00,
+  'B+': 3.50, 'B': 3.00, 'B-': 2.75,
+  'C+': 2.50, 'C': 2.00, 'C-': 1.75,
+  'D': 1.50, 'E': 0.00,
 };
 const GRADE_RANK = {
   'A': 12, 'A-': 11, 'B+': 10, 'B': 9, 'B-': 8,
   'C+': 7, 'C': 6, 'C-': 5, 'D': 2, 'E': 1,
 };
+// Kode status mahasiswa yang menandakan keluar (tidak boleh dihitung)
+const STATUS_KELUAR = new Set([
+  // Format huruf (Neo Feeder standar)
+  'L', 'D', 'M', 'K', 'W',
+  // Format angka (id_jenis_keluar)
+  '0', '1', '2', '3', '4', '5', '6',
+]);
+
+/* ============================================================
+ *  HELPER
+ * ============================================================ */
 const normHuruf = (h) => String(h ?? '').trim().toUpperCase();
+const hurufLabel = (h) => normHuruf(h) || '—';
 const gradePts  = (h) => GRADE_POINTS[normHuruf(h)] ?? 0;
 const gradeRank = (h) => GRADE_RANK[normHuruf(h)]   ?? 0;
 const fmt       = (n, d = 2) => Number.isFinite(Number(n)) ? Number(n).toFixed(d) : '-';
-const esc       = (v) => String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-const tahunDariPeriode = (idPeriode) => String(idPeriode ?? '').slice(0, 4);
+const esc       = (v) => String(v ?? '')
+  .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 
-/** "20221" → "2022 Ganjil" */
 function labelPeriode(idPeriode) {
   const s = String(idPeriode ?? '');
   if (s.length !== 5) return s || '—';
@@ -34,6 +45,78 @@ function labelPeriode(idPeriode) {
              : sem === '3' ? 'Pendek'
              : sem;
   return `${year} ${name}`;
+}
+
+/** smt_diambil dari id_semester (5 digit) & id_periode_masuk (5 digit). */
+function hitungSmtDiambil(idSemester, idPeriodeMasuk) {
+  const s = String(idSemester || '');
+  const e = String(idPeriodeMasuk || '');
+  if (s.length < 5 || e.length < 5) return null;
+
+  let semS = parseInt(s.slice(4), 10);
+  const semE = parseInt(e.slice(4), 10);
+  const yearS = parseInt(s.slice(0, 4), 10);
+  const yearE = parseInt(e.slice(0, 4), 10);
+  if ([semS, semE, yearS, yearE].some(isNaN)) return null;
+
+  // Semester pendek (3) dianggap lanjutan genap
+  if (semS === 3) semS = 2;
+
+  const count = (yearS - yearE) * 2 + (semS - semE) + 1;
+  return Math.max(1, count);
+}
+
+/**
+ * Bangun payload insert dari satu raw transkrip.
+ * Sumber: id_kelas_kuliah > id_nilai_transfer > id_konversi_aktivitas.
+ * smt_diambil: dari raw jika ada, else hitung dari id_semester & id_periode_masuk.
+ */
+function buildInsertRecord(rawRecord, regId, idPeriodeMasuk) {
+  if (!rawRecord) return { ok: false, error: 'record kosong' };
+
+  // Tentukan idReg dengan prioritas berlapis
+  const idReg =
+    rawRecord.id_registrasi_mahasiswa ||
+    regId ||
+    '';   // biarkan string kosong kalau dua-duanya kosong — validasi di api.js akan menangkap
+
+  const idMatkul = rawRecord.id_matkul || '';
+  if (!idReg)    return { ok: false, error: 'id_registrasi_mahasiswa kosong (rawRecord & regId)' };
+  if (!idMatkul) return { ok: false, error: 'id_matkul kosong' };
+
+  // Tentukan sumber dengan tegas
+  const src = rawRecord._source;
+  let source = null;
+
+  if (src === 'kelas' || src === 'riwayat') {
+    if (!rawRecord.id_kelas_kuliah) return { ok: false, error: 'id_kelas_kuliah kosong' };
+    source = { id_kelas_kuliah: rawRecord.id_kelas_kuliah };
+  } else if (src === 'transfer') {
+    if (!rawRecord.id_nilai_transfer) return { ok: false, error: 'id_nilai_transfer kosong' };
+    source = { id_nilai_transfer: rawRecord.id_nilai_transfer };
+  } else if (src === 'konversi') {
+    if (!rawRecord.id_konversi_aktivitas) return { ok: false, error: 'id_konversi_aktivitas kosong' };
+    source = { id_konversi_aktivitas: rawRecord.id_konversi_aktivitas };
+  } else {
+    return { ok: false, error: `sumber tidak dikenal: ${src}` };
+  }
+
+  // smt_diambil
+  let smt = rawRecord.smt_diambil;
+  if (!smt && rawRecord.id_semester && idPeriodeMasuk) {
+    smt = hitungSmtDiambil(rawRecord.id_semester, idPeriodeMasuk);
+  }
+  if (!smt) return { ok: false, error: 'smt_diambil tidak bisa ditentukan' };
+
+  return {
+    ok: true,
+    record: {
+      id_registrasi_mahasiswa: String(idReg),
+      id_matkul:               String(idMatkul),
+      ...source,
+      smt_diambil:             Number(smt),
+    },
+  };
 }
 
 /* ============================================================
@@ -60,53 +143,188 @@ export function hitungIPK(records) {
     totalMutu += sks * gradePts(r.nilai_huruf);
     n++;
   }
-  return {
-    totalSKS, totalMutu, jumlahMK: n,
-    ipk: totalSKS > 0 ? totalMutu / totalSKS : 0,
+  return { totalSKS, totalMutu, jumlahMK: n, ipk: totalSKS > 0 ? totalMutu / totalSKS : 0 };
+}
+
+/** Normalisasi record dari berbagai sumber ke bentuk seragam. */
+function normalizeRawRecord(r, fallbackRegId, idPeriodeMasuk = '') {
+  const src = r._source || '?';
+
+  // Default fallback
+  const out = {
+    id_registrasi_mahasiswa: r.id_registrasi_mahasiswa || fallbackRegId,
+    id_matkul:               r.id_matkul || '',
+    kode_mata_kuliah:        '',
+    nama_mata_kuliah:        '',
+    sks_mata_kuliah:         0,
+    nilai_huruf:             '',
+    nilai_indeks:            null,
+    nilai_angka:             null,
+    smt_diambil:             null,
+    id_semester:             '',
+    id_kelas_kuliah:         null,
+    id_nilai_transfer:       null,
+    id_konversi_aktivitas:   null,
+    _source:                 src,
   };
+
+  if (src === 'kelas') {
+    // GetDetailNilaiPerkuliahanKelas
+    out.kode_mata_kuliah = r.kode_mata_kuliah || '';
+    out.nama_mata_kuliah = r.nama_mata_kuliah || '';
+    out.sks_mata_kuliah  = parseFloat(r.sks_mata_kuliah) || 0;
+    out.nilai_huruf      = r.nilai_huruf || '';
+    out.nilai_indeks     = r.nilai_indeks ?? null;
+    out.nilai_angka      = r.nilai_angka ?? null;
+    out.id_semester      = r.id_semester || '';
+    out.id_kelas_kuliah  = r.id_kelas_kuliah || null;
+  }
+  else if (src === 'transfer') {
+    // GetNilaiTransferPendidikanMahasiswa
+    out.kode_mata_kuliah     = r.kode_matkul_diakui || r.kode_mata_kuliah || '';
+    out.nama_mata_kuliah     = r.nama_mata_kuliah_diakui || r.nama_mata_kuliah || '';
+    out.sks_mata_kuliah      = parseFloat(r.sks_mata_kuliah_diakui || r.sks_mata_kuliah) || 0;
+    out.nilai_huruf          = r.nilai_huruf_diakui || r.nilai_huruf || '';
+    out.nilai_angka          = r.nilai_angka_diakui ?? r.nilai_angka ?? null;
+    out.nilai_indeks         = r.nilai_indeks ?? null;
+    out.id_semester          = r.id_semester || '';
+    out.id_nilai_transfer    = r.id_transfer || r.id_nilai_transfer || null;
+    out.id_matkul            = r.id_matkul || '';
+  }
+  else if (src === 'konversi') {
+    // Konversi tidak punya kode_mata_kuliah → grup fallback ke id_matkul
+    out.kode_mata_kuliah        = r.kode_mata_kuliah || r.kode_matkul || '';
+    out.nama_mata_kuliah        = r.nama_mata_kuliah || '';
+    out.sks_mata_kuliah         = parseFloat(r.sks_mata_kuliah) || 0;
+    out.nilai_huruf             = r.nilai_huruf || '';
+    out.nilai_indeks            = r.nilai_indeks ?? null;
+    out.nilai_angka             = r.nilai_angka ?? null;
+    out.id_semester             = r.id_semester || '';
+    out.id_konversi_aktivitas   = r.id_konversi_aktivitas || null;
+    // id_registrasi_mahasiswa sudah di-inject di getAllRawNilaiMahasiswa
+  }
+  else if (src === 'riwayat') {
+    // GetRiwayatNilaiMahasiswa
+    out.kode_mata_kuliah = r.kode_mata_kuliah || '';
+    out.nama_mata_kuliah = r.nama_mata_kuliah || '';
+    out.sks_mata_kuliah  = parseFloat(r.sks_mata_kuliah) || 0;
+    out.nilai_huruf      = r.nilai_huruf || '';
+    out.nilai_indeks     = r.nilai_indeks ?? null;
+    out.nilai_angka      = r.nilai_angka ?? null;
+    out.id_semester      = r.id_periode || r.id_semester || '';
+    out.id_kelas_kuliah  = r.id_kelas || r.id_kelas_kuliah || null;
+  }
+
+  // smt_diambil: hitung jika belum ada
+  if (r.smt_diambil) {
+    out.smt_diambil = String(r.smt_diambil);
+  } else if (out.id_semester && idPeriodeMasuk) {
+    out.smt_diambil = String(hitungSmtDiambil(out.id_semester, idPeriodeMasuk) || '');
+  }
+
+  return out;
 }
 
 export function verifikasiTranskrip(rawRecords) {
-  const raw  = Array.isArray(rawRecords) ? rawRecords : [];
-  const best = hitungTranskripTerbaik(raw);
+  const raw = Array.isArray(rawRecords) ? rawRecords : [];
 
-  const byMatkul = new Map();
+  /**
+   * Kunci grup = kode_mata_kuliah + nama_mata_kuliah (normalized).
+   * Jika kode & nama kosong → fallback ke id_matkul.
+   * Ini menangkap kasus:
+   *   - id_matkul berbeda tapi kode+nama sama (kurikulum berubah, retake lintas kurikulum)
+   *   - id_matkul sama, kode+nama sama (retake biasa)
+   */
+  const groupKey = (r) => {
+    const kode = String(r.kode_mata_kuliah || '').trim().toUpperCase();
+    const nama = String(r.nama_mata_kuliah || '').trim().toUpperCase()
+      .replace(/\s+/g, ' ');
+    if (!kode && !nama) return `__id__${r.id_matkul || ''}`;
+    return `${kode}|${nama}`;
+  };
+
+  const byGroup = new Map();
   for (const r of raw) {
-    const key = r.id_matkul || r.kode_mata_kuliah;
-    if (!key) continue;
-    if (!byMatkul.has(key)) byMatkul.set(key, []);
-    byMatkul.get(key).push(r);
+    const key = groupKey(r);
+    if (!byGroup.has(key)) byGroup.set(key, []);
+    byGroup.get(key).push(r);
   }
 
   const detail = [];
-  let dupCount = 0;
-  for (const [key, arr] of byMatkul) {
-    const bestRec = arr.reduce(
+  let dupCount = 0, hasChange = false;
+  let sameIdDup = 0, diffIdDup = 0;
+
+  for (const [key, arr] of byGroup) {
+    // Sort kronologis berdasarkan smt_diambil
+    const sorted = [...arr].sort((a, b) => {
+      const sa = parseInt(a.smt_diambil ?? 0, 10) || 0;
+      const sb = parseInt(b.smt_diambil ?? 0, 10) || 0;
+      return sa - sb;
+    });
+
+    // Pilih terbaik berdasarkan ranking huruf
+    const best = sorted.reduce(
       (b, r) => !b || gradeRank(r.nilai_huruf) > gradeRank(b.nilai_huruf) ? r : b,
       null
     );
-    const attempts = arr.map(r => normHuruf(r.nilai_huruf)).filter(Boolean);
-    const isDup    = arr.length > 1;
-    if (isDup) dupCount++;
+
+    const isDup = arr.length > 1;
+    const uniqueIdMatkul = new Set(arr.map(r => r.id_matkul));
+    const isCrossIdMatkul = uniqueIdMatkul.size > 1;
+
+    if (isDup) {
+      dupCount++;
+      hasChange = true;
+      if (isCrossIdMatkul) diffIdDup++;
+      else                 sameIdDup++;
+    }
+
     detail.push({
-      id_matkul:        key,
-      kode_mata_kuliah: bestRec?.kode_mata_kuliah || '',
-      nama_mata_kuliah: bestRec?.nama_mata_kuliah || '',
-      sks_mata_kuliah:  parseFloat(bestRec?.sks_mata_kuliah) || 0,
-      bestHuruf:        normHuruf(bestRec?.nilai_huruf),
-      attempts, count:  arr.length, isDup,
+      // id_matkul utama = record terbaik (untuk delete/insert)
+      id_matkul:        best?.id_matkul || '',
+      allIdMatkul:      [...uniqueIdMatkul],   // semua id_matkul dalam grup
+      kode_mata_kuliah: best?.kode_mata_kuliah || '',
+      nama_mata_kuliah: best?.nama_mata_kuliah || '',
+      sks_mata_kuliah:  parseFloat(best?.sks_mata_kuliah) || 0,
+      bestHuruf:        normHuruf(best?.nilai_huruf) || '—',
+      bestRecord:       best,
+      attempts:         sorted.map(r => hurufLabel(r.nilai_huruf)),
+      // Detail per attempt — untuk tooltip
+      attemptsDetail:   sorted.map(r => ({
+        huruf:    hurufLabel(r.nilai_huruf),
+        smt:      r.smt_diambil || '?',
+        idMatkul: r.id_matkul,
+        kode:     r.kode_mata_kuliah,
+        nama:     r.nama_mata_kuliah,
+        sumber:   r._source || '?',
+      })),
+      count:            arr.length,
+      isDup,
+      isCrossIdMatkul,          // true = id_matkul berbeda (kurikulum berubah)
+      emptyAttempts:    sorted.filter(r => !normHuruf(r.nilai_huruf)).length,
     });
   }
+
   detail.sort((a, b) =>
     String(a.kode_mata_kuliah).localeCompare(String(b.kode_mata_kuliah))
   );
 
+  const best = detail.map(d => d.bestRecord).filter(Boolean);
+
   return {
     raw, best, detail, dupCount,
-    summary:       hitungIPK(best),
-    rawSummary:    hitungIPK(raw),
-    isClean:       raw.length > 0 && dupCount === 0,
+    summary:    hitungIPK(best),
+    rawSummary: hitungIPK(raw),
+    isClean:    raw.length > 0 && !hasChange,
+    hasChange,
     sudahDihitung: raw.length > 0,
+    stats: {
+      rawCount:   raw.length,
+      uniqueMk:   byGroup.size,
+      dupMk:      dupCount,
+      sameIdDup,                // retake biasa
+      diffIdDup,                // kode sama, id_matkul beda
+    },
   };
 }
 
@@ -114,53 +332,28 @@ export function verifikasiTranskrip(rawRecords) {
  *  MAIN RENDER
  * ============================================================ */
 export async function renderHitungTranskrip(container) {
-  const api = new NeoFeederAPI();
+  const api    = new NeoFeederAPI();
   const logger = new Logger();
 
   const state = {
-    angkatan: '',
-    prodiId:  '',                     // '' = semua prodi
     allMhs: [],
-    riwayatAll: [],
-    angkatanOptions: [],              // tahun 4 digit
-    prodiList: [],                    // [{ id, nama }]
-    riwayatByMhsId: new Map(),
-    riwayatByRegId: new Map(),
-    perStudent: new Map(),
+    alumniMhsIds: new Set(),
+    matched: [],
+    selected: null,        // { m, regId, riwayat }
+    verified: null,
+    loading: false,
+    lastBackup: null,
+    selectedMkIds: new Set(),   // ← BARU: id_matkul yang dipilih user
   };
 
   /* ---------------- HTML ---------------- */
   container.innerHTML = `
-    <h2 class="text-2xl font-bold mb-4">Hitung &amp; Verifikasi Transkrip</h2>
-
-    <div class="glass p-4 rounded-xl mb-4 flex flex-wrap items-center gap-3">
-      <label class="text-sm font-medium">Angkatan (tahun):</label>
-      <select id="ht-angkatan"
-              class="px-3 py-1.5 text-sm border rounded-lg dark:bg-gray-700 dark:border-gray-600 min-w-[120px]">
-        <option value="">— Pilih —</option>
-      </select>
-
-      <label class="text-sm font-medium">Prodi:</label>
-      <select id="ht-prodi"
-              class="px-3 py-1.5 text-sm border rounded-lg dark:bg-gray-700 dark:border-gray-600 min-w-[200px]">
-        <option value="">Semua Prodi</option>
-      </select>
-
-      <button id="ht-btn-load"
-              class="px-3 py-1.5 text-sm bg-gray-200 dark:bg-gray-700 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600">
-        🔄 Muat Data
-      </button>
-      <button id="ht-btn-hitung"
-              class="px-4 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
-        ▶ Hitung Transkrip Angkatan
-      </button>
-      <span id="ht-status" class="text-sm text-gray-500 ml-auto"></span>
-    </div>
+    <h2 class="text-2xl font-bold mb-4">Hitung &amp; Verifikasi Transkrip Mahasiswa</h2>
 
     <div class="glass p-4 rounded-xl mb-4">
-      <h3 class="font-semibold mb-2">🔍 Cek Transkrip Mahasiswa</h3>
+      <h3 class="font-semibold mb-2">🔍 Pilih Mahasiswa Aktif</h3>
       <div class="flex gap-2 flex-wrap">
-        <input id="ht-search" type="text" placeholder="Ketik NIM atau nama… (lintas angkatan)"
+        <input id="ht-search" type="text" placeholder="Ketik NIM atau nama…"
                class="flex-1 min-w-[240px] px-3 py-1.5 text-sm border rounded-lg dark:bg-gray-700 dark:border-gray-600" />
         <button id="ht-btn-cari"
                 class="px-4 py-1.5 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">
@@ -170,677 +363,674 @@ export async function renderHitungTranskrip(container) {
       <div id="ht-search-result" class="mt-3 text-sm text-gray-500 italic">Belum ada pencarian.</div>
     </div>
 
-    <div class="glass p-4 rounded-xl">
-      <div class="flex items-center justify-between mb-2 flex-wrap gap-2">
-        <h3 class="font-semibold">📋 Daftar Mahasiswa <span id="ht-angkatan-label">—</span></h3>
-        <div class="flex gap-2 text-xs">
-          <span class="px-2 py-0.5 bg-green-100 text-green-700 rounded-full" id="ht-sum-clean">0 sesuai</span>
-          <span class="px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full" id="ht-sum-dup">0 perlu hitung</span>
-          <span class="px-2 py-0.5 bg-gray-200 text-gray-700 rounded-full" id="ht-sum-empty">0 belum</span>
+    <div class="glass p-4 rounded-xl mb-4 hidden" id="ht-student-card">
+      <div class="flex items-start justify-between flex-wrap gap-2 mb-3">
+        <div>
+          <h3 class="font-semibold text-lg" id="ht-student-name">—</h3>
+          <p class="text-sm text-gray-500" id="ht-student-meta">—</p>
+        </div>
+        <div class="flex gap-2 items-center flex-wrap">
+          <span id="ht-status" class="text-sm text-gray-500"></span>
+          <button id="ht-btn-refresh"
+                  class="px-3 py-1.5 text-sm bg-gray-200 dark:bg-gray-700 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600">
+            🔄 Muat Ulang
+          </button>
+          <button id="ht-btn-backup"
+                  class="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200">
+            💾 Backup
+          </button>
+          <button id="ht-btn-debug"
+                  class="px-3 py-1.5 text-sm bg-yellow-100 text-yellow-800 rounded-lg hover:bg-yellow-200"
+                  title="Lihat raw JSON transkrip">
+            🔍 Debug JSON
+          </button>
+          <button id="ht-btn-apply"
+                  class="px-4 py-1.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50">
+            ✓ Terapkan Hasil Hitung
+          </button>
         </div>
       </div>
-      <div class="overflow-auto max-h-[60vh]">
+      <div id="ht-summary" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3"></div>
+      <div class="overflow-auto max-h-[60vh] border rounded-lg">
         <table class="w-full text-sm">
-          <thead class="sticky top-0 bg-gray-100 dark:bg-gray-900 z-10">
+          <thead class="bg-gray-100 dark:bg-gray-900 sticky top-0 z-10">
             <tr>
               <th class="px-2 py-2 text-left w-8"></th>
-              <th class="px-2 py-2 text-left">NIM</th>
-              <th class="px-2 py-2 text-left">Nama</th>
-              <th class="px-2 py-2 text-left">Prodi</th>
-              <th class="px-2 py-2 text-left">Periode Masuk</th>
-              <th class="px-2 py-2 text-right">MK</th>
-              <th class="px-2 py-2 text-right">SKS</th>
-              <th class="px-2 py-2 text-right">IPK</th>
-              <th class="px-2 py-2 text-center">Status</th>
-            </tr>
-          </thead>
-          <tbody id="ht-tbody">
-            <tr><td colspan="9" class="text-center py-6 text-gray-400">
-              Pilih angkatan lalu klik "Muat Data".
-            </td></tr>
-          </tbody>
-        </table>
-      </div>
-      <p class="text-xs text-gray-500 mt-2">
-        ☑ = sudah dihitung (tidak ada MK berulang) ·
-        ☐ = perlu dicek / belum ada transkrip.
-      </p>
-    </div>
-
-    <div id="ht-modal"
-         class="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm hidden items-center justify-center p-4"
-         onclick="if(event.target===this) window.__htCloseModal()">
-      <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col">
-        <div class="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
-          <div>
-            <h3 id="ht-modal-title" class="text-lg font-bold">Detail Transkrip</h3>
-            <p id="ht-modal-sub" class="text-sm text-gray-500 mt-1">—</p>
-          </div>
-          <button onclick="window.__htCloseModal()"
-                  class="text-gray-400 hover:text-gray-600 text-2xl leading-none px-2">×</button>
-        </div>
-        <div class="p-4 overflow-auto" id="ht-modal-body">
-          <p class="text-center text-gray-400 py-6">Memuat…</p>
-        </div>
-      </div>
-    </div>
-  `;
-
-  const $ = (sel) => container.querySelector(sel);
-  const el = {
-    angkatan:  $('#ht-angkatan'),
-    prodi:     $('#ht-prodi'),
-    btnLoad:   $('#ht-btn-load'),
-    btnHitung: $('#ht-btn-hitung'),
-    status:    $('#ht-status'),
-    search:    $('#ht-search'),
-    btnCari:   $('#ht-btn-cari'),
-    searchRes: $('#ht-search-result'),
-    tbody:     $('#ht-tbody'),
-    angLabel:  $('#ht-angkatan-label'),
-    sumClean:  $('#ht-sum-clean'),
-    sumDup:    $('#ht-sum-dup'),
-    sumEmpty:  $('#ht-sum-empty'),
-    modal:     $('#ht-modal'),
-    modalT:    $('#ht-modal-title'),
-    modalS:    $('#ht-modal-sub'),
-    modalB:    $('#ht-modal-body'),
-  };
-
-  const setStatus = (msg, isError = false) => {
-    if (!el.status) return;
-    el.status.textContent = msg;
-    el.status.className = 'text-sm ml-auto ' + (isError ? 'text-red-500' : 'text-gray-500');
-  };
-
-  /* ---------------- Modal globals ---------------- */
-  window.__htCloseModal = () => {
-    el.modal.classList.add('hidden');
-    el.modal.classList.remove('flex');
-    document.body.classList.remove('modal-open');
-  };
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') window.__htCloseModal?.();
-  });
-
-  /* ---------------- Helpers ---------------- */
-  const getNim   = (m) => String(m.nim || m.nipd || '');
-  const getNama  = (m) => m.nama_mahasiswa || '';
-  const getProdi = (m) => m.nama_program_studi || '';
-  const getMhsId = (m) => m.id_mahasiswa || '';
-
-  const getRiwayatArr = (m) =>
-    state.riwayatByMhsId.get(getMhsId(m)) || [];
-
-  /** Cari riwayat dgn id_periode_masuk berawalan 4 digit tahun. Ambil entry paling awal. */
-  const findRiwayat = (m, angkatanYear) =>
-    getRiwayatArr(m)
-      .filter(r =>
-        r.id_periode_masuk &&
-        String(r.id_periode_masuk).slice(0, 4) === String(angkatanYear)
-      )
-      .sort((a, b) =>
-        String(a.id_periode_masuk).localeCompare(String(b.id_periode_masuk))
-      )[0];
-
-  /** Daftar mahasiswa utk angkatan (+ filter prodi bila dipilih). */
-  const getMahasiswaAngkatan = (angkatanYear) => {
-    const result = [];
-    for (const m of state.allMhs) {
-      const r = findRiwayat(m, angkatanYear);
-      if (!r || !r.id_registrasi_mahasiswa) continue;
-
-      const prodiId = String(r.id_prodi || m.id_prodi || '');
-      if (state.prodiId && prodiId !== String(state.prodiId)) continue;
-
-      result.push({
-        ...m,
-        id_registrasi_mahasiswa: r.id_registrasi_mahasiswa,
-        id_periode_masuk:       String(r.id_periode_masuk || ''),
-        id_prodi_entry:         prodiId || null,
-      });
-    }
-    return result;
-  };
-
-  /** Nama prodi untuk label header. */
-  const prodiLabel = () => {
-    if (!state.prodiId) return 'Semua Prodi';
-    return state.prodiList.find(p => p.id === state.prodiId)?.nama || state.prodiId.slice(0, 8);
-  };
-
-  /* ---------------- 1) Load mahasiswa + riwayat + prodi ---------------- */
-  async function loadAllMahasiswa() {
-    setStatus('Memuat daftar mahasiswa…');
-    try {
-      const resM = await api.getListMahasiswa();
-      state.allMhs = Array.isArray(resM) ? resM : (resM?.data || []);
-
-      setStatus('Memuat riwayat pendidikan…');
-
-      // Defensif: pakai method baru jika ada, kalau tidak pakai call manual
-      const fetchRiwayat =
-        typeof api.getAllRiwayatPendidikanMahasiswa === 'function'
-          ? () => api.getAllRiwayatPendidikanMahasiswa()
-          : async () => {
-              const res = await api.call('GetListRiwayatPendidikanMahasiswa', { limit: 100000 });
-              return api.extractData(res) || [];
-            };
-      state.riwayatAll = await fetchRiwayat();
-
-      // === FIX BUG: populasi ulang kedua Map ===
-      state.riwayatByMhsId.clear();
-      state.riwayatByRegId.clear();
-
-      const angkatanSet = new Set();
-      const prodiMap    = new Map();
-
-      for (const r of state.riwayatAll) {
-        if (r.id_mahasiswa) {
-          const key = String(r.id_mahasiswa);
-          if (!state.riwayatByMhsId.has(key)) state.riwayatByMhsId.set(key, []);
-          state.riwayatByMhsId.get(key).push(r);
-        }
-        if (r.id_registrasi_mahasiswa) {
-          state.riwayatByRegId.set(String(r.id_registrasi_mahasiswa), r);
-        }
-
-        const y = tahunDariPeriode(r.id_periode_masuk);
-        if (/^\d{4}$/.test(y)) angkatanSet.add(y);
-
-        if (r.id_prodi) {
-          const pid = String(r.id_prodi);
-          if (!prodiMap.has(pid)) {
-            prodiMap.set(pid,
-              r.nama_program_studi || r.nama_prodi || pid.slice(0, 8)
-            );
-          }
-        }
-      }
-
-      state.angkatanOptions = [...angkatanSet].sort().reverse();
-      state.prodiList = [...prodiMap.entries()]
-        .map(([id, nama]) => ({ id, nama }))
-        .sort((a, b) => a.nama.localeCompare(b.nama));
-
-      // Populate dropdown angkatan
-      el.angkatan.innerHTML = `<option value="">— Pilih —</option>` +
-        state.angkatanOptions.map(y =>
-          `<option value="${esc(y)}">${esc(y)}</option>`
-        ).join('');
-
-      // Populate dropdown prodi
-      el.prodi.innerHTML = `<option value="">Semua Prodi</option>` +
-        state.prodiList.map(p =>
-          `<option value="${esc(p.id)}">${esc(p.nama)}</option>`
-        ).join('');
-
-      setStatus(
-        `${state.allMhs.length} mahasiswa · ${state.riwayatAll.length} riwayat · ` +
-        `${state.angkatanOptions.length} angkatan · ${state.prodiList.length} prodi`
-      );
-
-      logger.log('info', `Data mahasiswa siap`, {
-        mahasiswa: state.allMhs.length,
-        riwayat:   state.riwayatAll.length,
-        angkatan:  state.angkatanOptions.length,
-        prodi:     state.prodiList.length,
-        });
-
-    } catch (e) {
-      console.error(e);
-      setStatus('Gagal memuat: ' + e.message, true);
-    }
-  }
-
-  /* ---------------- 2) Load transkrip per angkatan (+prodi) ---------------- */
-  async function loadTranskripAngkatan() {
-    if (!state.angkatan) { setStatus('Pilih angkatan dulu', true); return; }
-
-    setStatus('Memuat transkrip…');
-    state.perStudent.clear();
-
-    const mhs = getMahasiswaAngkatan(state.angkatan);
-    if (!mhs.length) {
-      renderTable(mhs);
-      setStatus(`0 mahasiswa pada angkatan ${state.angkatan}` +
-        (state.prodiId ? ` (${prodiLabel()})` : ''));
-      return;
-    }
-
-    const BATCH = 10;
-    for (let i = 0; i < mhs.length; i += BATCH) {
-        const chunk = mhs.slice(i, i + BATCH);
-        await Promise.all(chunk.map(async (m) => {
-            const regId = m.id_registrasi_mahasiswa;
-            let raw = [];
-            try {
-            const r = await api.getTranskripMahasiswa({ id_registrasi_mahasiswa: regId });
-            raw = Array.isArray(r) ? r : (r?.data || []);
-            } catch (e) {
-            if (DEBUG_API) console.warn(`transkrip ${regId} gagal:`, e.message);
-            logger.log('warning', `Transkrip ${m.nim || regId} gagal dimuat: ${e.message}`, {
-                regId, nim: m.nim,
-            });
-            }
-
-            state.perStudent.set(regId, { raw, verified: verifikasiTranskrip(raw) });
-        }));
-
-        setStatus(
-            `(${Math.min(i + BATCH, mhs.length)} dari ${mhs.length}) memuat transkrip…`
-        );
-    }
-
-    renderTable(mhs);
-    setStatus(
-      `${mhs.length} mahasiswa · angkatan ${state.angkatan}` +
-      (state.prodiId ? ` · ${prodiLabel()}` : '')
-    );
-  }
-
-  /* ---------------- 3) Render tabel ---------------- */
-  function renderTable(mhs) {
-    el.angLabel.textContent = state.angkatan
-      ? `(angkatan ${state.angkatan} · ${prodiLabel()})`
-      : '—';
-
-    if (!mhs.length) {
-      el.tbody.innerHTML = `<tr><td colspan="9" class="text-center py-6 text-gray-400">
-        Tidak ada mahasiswa yang cocok dengan filter.
-      </td></tr>`;
-      updateSummary(0, 0, 0);
-      return;
-    }
-
-    let clean = 0, dup = 0, empty = 0;
-
-    el.tbody.innerHTML = mhs.map(m => {
-      const regId = m.id_registrasi_mahasiswa;
-      const v = state.perStudent.get(regId)?.verified;
-      const raw = v?.raw || [];
-
-      let badge, checkboxState;
-      if (!raw.length) {
-        empty++;  checkboxState = false;
-        badge = `<span class="text-xs px-2 py-0.5 bg-gray-200 text-gray-700 rounded-full">Belum</span>`;
-      } else if (v.dupCount > 0) {
-        dup++;    checkboxState = false;
-        badge = `<span class="text-xs px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full">${v.dupCount} MK dobel</span>`;
-      } else {
-        clean++;  checkboxState = true;
-        badge = `<span class="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded-full">✓ Sesuai</span>`;
-      }
-
-      const s = v?.summary || hitungIPK([]);
-
-      return `
-        <tr class="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-900">
-          <td class="px-2 py-2">
-            <input type="checkbox" ${checkboxState ? 'checked' : ''} disabled
-                   title="${checkboxState ? 'Sudah dihitung' : 'Belum dihitung / perlu dicek'}">
-          </td>
-          <td class="px-2 py-2 font-mono text-xs">${esc(getNim(m) || '-')}</td>
-          <td class="px-2 py-2">
-            <button class="text-indigo-600 hover:underline text-left"
-                    onclick="window.__htShowDetail('${esc(regId)}')">
-              ${esc(getNama(m) || '-')}
-            </button>
-          </td>
-          <td class="px-2 py-2 text-xs">${esc(getProdi(m) || '-')}</td>
-          <td class="px-2 py-2 text-xs font-mono"
-              title="${esc(labelPeriode(m.id_periode_masuk))}">
-            ${esc(m.id_periode_masuk || '-')}
-          </td>
-          <td class="px-2 py-2 text-right">${s.jumlahMK}</td>
-          <td class="px-2 py-2 text-right">${s.totalSKS}</td>
-          <td class="px-2 py-2 text-right font-semibold">${fmt(s.ipk)}</td>
-          <td class="px-2 py-2 text-center">${badge}</td>
-        </tr>`;
-    }).join('');
-
-    updateSummary(clean, dup, empty);
-  }
-
-  function updateSummary(clean, dup, empty) {
-    el.sumClean.textContent = `${clean} sesuai`;
-    el.sumDup.textContent   = `${dup} perlu hitung`;
-    el.sumEmpty.textContent = `${empty} belum`;
-  }
-
-  /* ---------------- 4) Detail per mahasiswa ---------------- */
-  window.__htShowDetail = async (regId) => {
-    const r = state.riwayatByRegId.get(String(regId));
-    if (!r) {
-      el.modalT.textContent = 'Transkrip';
-      el.modalS.textContent = '';
-      el.modalB.innerHTML = `<p class="text-center text-red-500 py-6">
-        Riwayat untuk id_registrasi_mahasiswa tidak ditemukan.
-      </p>`;
-      el.modal.classList.remove('hidden');
-      el.modal.classList.add('flex');
-      document.body.classList.add('modal-open');
-      return;
-    }
-
-    const m = state.allMhs.find(x => String(x.id_mahasiswa) === String(r.id_mahasiswa));
-    if (!m) return;
-
-    el.modalT.textContent = `Transkrip — ${getNama(m) || '-'}`;
-    el.modalS.textContent =
-      `NIM: ${getNim(m) || '-'} · ${getProdi(m) || '-'} · ` +
-      `Periode: ${r?.id_periode_masuk ? labelPeriode(r.id_periode_masuk) : '-'}`;
-    el.modalB.innerHTML = `<p class="text-center text-gray-400 py-6">Memuat transkrip…</p>`;
-    el.modal.classList.remove('hidden');
-    el.modal.classList.add('flex');
-    document.body.classList.add('modal-open');
-
-    try {
-      const res = await api.getTranskripMahasiswa(
-        { id_registrasi_mahasiswa: String(regId) }, true
-      );
-      const raw = Array.isArray(res) ? res : (res?.data || []);
-      renderDetail(verifikasiTranskrip(raw));
-    } catch (e) {
-      el.modalB.innerHTML = `<p class="text-center text-red-500 py-6">
-        Gagal memuat: ${esc(e.message)}
-      </p>`;
-    }
-  };
-
-  function renderDetail(v) {
-    const sum = v.summary;
-    const stateTag = v.raw.length === 0 ? 'empty'
-                   : v.isClean           ? 'clean'
-                   : 'dup';
-
-    const badge = stateTag === 'clean'
-      ? `<span class="px-2 py-0.5 bg-green-100 text-green-700 rounded-full text-xs">✓ Sudah sesuai</span>`
-      : stateTag === 'dup'
-      ? `<span class="px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full text-xs">Perlu hitung ulang</span>`
-      : `<span class="px-2 py-0.5 bg-gray-200 text-gray-700 rounded-full text-xs">Belum ada transkrip</span>`;
-
-    const info = `
-      <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-        <div class="stat-card p-3">
-          <div class="text-xs text-gray-500">Record (raw → unik)</div>
-          <div class="text-xl font-bold">${v.raw.length} → ${v.best.length}</div>
-        </div>
-        <div class="stat-card p-3">
-          <div class="text-xs text-gray-500">SKS (hasil hitung)</div>
-          <div class="text-xl font-bold">${sum.totalSKS}</div>
-        </div>
-        <div class="stat-card p-3">
-          <div class="text-xs text-gray-500">IPK (hasil hitung)</div>
-          <div class="text-xl font-bold text-indigo-600">${fmt(sum.ipk)}</div>
-        </div>
-        <div class="stat-card p-3">
-          <div class="text-xs text-gray-500">Status</div>
-          <div class="mt-1">${badge}</div>
-        </div>
-      </div>`;
-
-    const rows = v.detail.length
-      ? v.detail.map(d => `
-        <tr class="border-b border-gray-100 dark:border-gray-700 ${d.isDup ? 'bg-orange-50 dark:bg-orange-900/20' : ''}">
-          <td class="px-2 py-1.5 font-mono text-xs">${esc(d.kode_mata_kuliah)}</td>
-          <td class="px-2 py-1.5">${esc(d.nama_mata_kuliah)}</td>
-          <td class="px-2 py-1.5 text-right">${d.sks_mata_kuliah}</td>
-          <td class="px-2 py-1.5 text-center text-xs">${d.attempts.join(' → ') || '-'}</td>
-          <td class="px-2 py-1.5 text-center font-bold">${esc(d.bestHuruf || '-')}</td>
-          <td class="px-2 py-1.5 text-center text-xs ${d.isDup ? 'text-orange-600 font-semibold' : 'text-gray-400'}">
-            ${d.isDup ? `⚠ ${d.count}×` : 'OK'}
-          </td>
-        </tr>`).join('')
-      : `<tr><td colspan="6" class="text-center py-4 text-gray-400">Tidak ada transkrip.</td></tr>`;
-
-    el.modalB.innerHTML = `
-      ${info}
-      <div class="text-xs text-gray-500 mb-2">
-        <b>Attempts</b> = semua nilai yang tersimpan untuk MK tsb.
-        Baris orange = MK berulang; yang dipakai adalah nilai tertinggi.
-      </div>
-      <div class="overflow-auto max-h-[55vh] border rounded-lg">
-        <table class="w-full text-sm">
-          <thead class="bg-gray-100 dark:bg-gray-900 sticky top-0">
-            <tr>
               <th class="px-2 py-2 text-left">Kode</th>
               <th class="px-2 py-2 text-left">Mata Kuliah</th>
               <th class="px-2 py-2 text-right">SKS</th>
               <th class="px-2 py-2 text-center">Attempts</th>
               <th class="px-2 py-2 text-center">Dipakai</th>
+              <th class="px-2 py-2 text-center">Sumber</th>
               <th class="px-2 py-2 text-center">Catatan</th>
             </tr>
           </thead>
-          <tbody>${rows}</tbody>
+          <tbody id="ht-tbody">
+            <tr><td colspan="8" class="text-center py-6 text-gray-400">Pilih mahasiswa dulu.</td></tr>
+          </tbody>
         </table>
-      </div>`;
+      </div>
+      <p class="text-xs text-gray-500 mt-2">
+        ☑ = sudah sesuai (1 attempt per MK) ·
+        ☐ = perlu diterapkan (ada MK berulang → delete-all + insert nilai tertinggi).
+      </p>
+    </div>
+  `;
+
+  const $ = (sel) => container.querySelector(sel);
+  const el = {
+    search:      $('#ht-search'),
+    btnCari:     $('#ht-btn-cari'),
+    searchRes:   $('#ht-search-result'),
+    studentCard: $('#ht-student-card'),
+    studentName: $('#ht-student-name'),
+    studentMeta: $('#ht-student-meta'),
+    status:      $('#ht-status'),
+    btnRefresh:  $('#ht-btn-refresh'),
+    btnBackup:   $('#ht-btn-backup'),
+    btnDebug:    $('#ht-btn-debug'),
+    btnApply:    $('#ht-btn-apply'),
+    summary:     $('#ht-summary'),
+    tbody:       $('#ht-tbody'),
+  };
+
+  const setStatus = (msg, isError = false) => {
+    if (!el.status) return;
+    el.status.textContent = msg;
+    el.status.className = 'text-sm ' + (isError ? 'text-red-500' : 'text-gray-500');
+  };
+
+  const getNim   = (m) => String(m.nim || m.nipd || '');
+  const getNama  = (m) => m.nama_mahasiswa || '';
+  const getProdi = (m) => m.nama_program_studi || '';
+
+  /* ---------------- Filter mahasiswa aktif ---------------- */
+  function isMahasiswaAktif(m) {
+    const mhsId = String(m.id_mahasiswa || '');
+    // Cek dari daftar alumni (lebih akurat)
+    if (mhsId && state.alumniMhsIds.has(mhsId)) return false;
+    // Cek dari status string
+    const status = String(m.id_status_mahasiswa ?? '').trim().toUpperCase();
+    if (status && STATUS_KELUAR.has(status)) return false;
+    return true;
   }
 
-  /* ---------------- 5) Cari NIM / nama (global, lintas angkatan) ---------------- */
+  /* ---------------- 1) Load mahasiswa + alumni ---------------- */
+  async function loadAllMahasiswa() {
+    try {
+      const res = await api.getListMahasiswa();
+      state.allMhs = Array.isArray(res) ? res : (res?.data || []);
+
+      try {
+        const alumni = await api.getDetailMahasiswaLulusDO();
+        const arr = Array.isArray(alumni) ? alumni : (alumni?.data || []);
+        state.alumniMhsIds.clear();
+        for (const a of arr) {
+          if (a.id_mahasiswa) state.alumniMhsIds.add(String(a.id_mahasiswa));
+          if (!a.id_mahasiswa && a.nim) {
+            const m = state.allMhs.find(x => String(x.nim) === String(a.nim));
+            if (m?.id_mahasiswa) state.alumniMhsIds.add(String(m.id_mahasiswa));
+          }
+        }
+      } catch (e) {
+        console.warn('Gagal memuat daftar alumni:', e.message);
+        logger.log('warning', `Gagal memuat daftar alumni: ${e.message}`);
+      }
+
+      logger.log('info', `Daftar mahasiswa siap`, {
+        total:  state.allMhs.length,
+        alumni: state.alumniMhsIds.size,
+        aktif:  state.allMhs.length - state.alumniMhsIds.size,
+      });
+    } catch (e) {
+      console.error(e);
+      logger.log('error', `Gagal memuat mahasiswa: ${e.message}`);
+    }
+  }
+
+  /* ---------------- 2) Search ---------------- */
   async function handleSearch() {
     const q = el.search.value.trim().toLowerCase();
     if (!q) { el.searchRes.innerHTML = 'Masukkan NIM/nama.'; return; }
 
-    const found = state.allMhs.filter(m =>
+    const cocok = state.allMhs.filter(m =>
       getNim(m).toLowerCase().includes(q) ||
       getNama(m).toLowerCase().includes(q)
     );
+    state.matched = cocok.filter(isMahasiswaAktif);
+    const alumni = cocok.filter(m => !isMahasiswaAktif(m));
 
-    if (!found.length) {
+    if (!state.matched.length && !alumni.length) {
       el.searchRes.innerHTML =
         `<span class="text-red-500">Tidak ada mahasiswa cocok dengan "${esc(q)}".</span>`;
       return;
     }
 
-    // Ambil riwayat paling relevan (periode terbaru) per mahasiswa
-    const withRegId = found.map(m => {
-      const arr = getRiwayatArr(m)
+    const renderList = (arr, disabled, alasan) => arr.slice(0, 30).map((m, i) => `
+      <button ${disabled ? 'disabled' : ''}
+              class="block w-full text-left px-3 py-1.5 rounded
+                     ${disabled
+                       ? 'opacity-50 cursor-not-allowed bg-gray-50 dark:bg-gray-800'
+                       : 'hover:bg-gray-100 dark:hover:bg-gray-700'}"
+              data-idx="${disabled ? '' : i}">
+        <span class="font-mono text-xs">${esc(getNim(m) || '-')}</span>
+        · ${esc(getNama(m) || '-')}
+        <span class="text-xs text-gray-500">
+          (${esc(getProdi(m) || '')})
+          ${disabled ? `<span class="ml-1 text-red-500">· ${alasan}</span>` : ''}
+        </span>
+      </button>
+    `).join('');
+
+    let html = '';
+    if (state.matched.length) {
+      html += `
+        <div class="text-sm mb-1"><b>${state.matched.length}</b> mahasiswa aktif (bisa dihitung):</div>
+        <div class="space-y-1 max-h-48 overflow-auto mb-3" id="ht-list-aktif">
+          ${renderList(state.matched, false)}
+        </div>`;
+    }
+    if (alumni.length) {
+      html += `
+        <div class="text-sm mb-1 text-gray-500"><b>${alumni.length}</b> mahasiswa sudah keluar (tidak dihitung):</div>
+        <div class="space-y-1 max-h-32 overflow-auto">
+          ${renderList(alumni, true, 'sudah keluar')}
+        </div>`;
+    }
+    el.searchRes.innerHTML = html;
+
+    const listAktif = el.searchRes.querySelector('#ht-list-aktif');
+    if (listAktif) {
+      listAktif.querySelectorAll('button[data-idx]').forEach(btn => {
+        const idx = parseInt(btn.getAttribute('data-idx'), 10);
+        if (!isNaN(idx)) btn.addEventListener('click', () => selectMahasiswa(state.matched[idx]));
+      });
+    }
+
+    if (state.matched.length === 1) selectMahasiswa(state.matched[0]);
+  }
+
+  /* ---------------- 3) Pilih mahasiswa ---------------- */
+  async function selectMahasiswa(m) {
+    if (!m) return;
+    if (!isMahasiswaAktif(m)) {
+      setStatus('Mahasiswa sudah keluar — tidak bisa dihitung.', true);
+      logger.log('warning', `Tolak hitung mahasiswa keluar: ${getNama(m)} (${getNim(m)})`);
+      return;
+    }
+
+    el.studentCard.classList.remove('hidden');
+    el.studentName.textContent = getNama(m) || '-';
+    el.studentMeta.textContent = `NIM: ${getNim(m) || '-'} · ${getProdi(m) || '-'}`;
+    el.summary.innerHTML = '';
+    el.tbody.innerHTML = `<tr><td colspan="8" class="text-center py-6 text-gray-400">Memuat transkrip…</td></tr>`;
+    setStatus('Mencari riwayat pendidikan…');
+
+    const info = await resolveRiwayat(m);
+    if (!info) {
+      el.tbody.innerHTML = `<tr><td colspan="8" class="text-center py-6 text-red-500">
+        Riwayat pendidikan tidak ditemukan (id_registrasi_mahasiswa kosong).
+      </td></tr>`;
+      setStatus('Gagal: riwayat pendidikan tidak ditemukan', true);
+      logger.log('error', `resolveRiwayat gagal: ${getNim(m)}`);
+      return;
+    }
+
+    state.selected = { m, regId: info.regId, riwayat: info.riwayat };
+    el.studentMeta.textContent =
+      `NIM: ${getNim(m) || '-'} · ${getProdi(m) || '-'} · ` +
+      `Periode masuk: ${labelPeriode(info.riwayat.id_periode_masuk)}`;
+
+    await loadTranskrip(info.regId);
+  }
+
+  async function resolveRiwayat(m) {
+    try {
+      const res = await api.call('GetListRiwayatPendidikanMahasiswa', {
+        filter: `id_mahasiswa='${m.id_mahasiswa}'`,
+        limit: 10,
+      });
+      const arr = api.extractData(res) || [];
+      const sorted = arr
         .filter(r => r.id_registrasi_mahasiswa)
         .sort((a, b) =>
           String(b.id_periode_masuk || '').localeCompare(String(a.id_periode_masuk || ''))
         );
-      return { m, riwayat: arr[0] || null };
-    }).filter(x => x.riwayat);
-
-    if (!withRegId.length) {
-      el.searchRes.innerHTML =
-        `<span class="text-red-500">Ditemukan mahasiswa, tapi tidak punya riwayat pendidikan (id_registrasi_mahasiswa kosong).</span>`;
-      return;
+      const r = sorted[0];
+      return r ? { regId: r.id_registrasi_mahasiswa, riwayat: r } : null;
+    } catch (e) {
+      if (DEBUG_API) console.warn('resolveRiwayat gagal:', e.message);
+      return null;
     }
-
-    if (withRegId.length === 1) {
-      const { m, riwayat } = withRegId[0];
-      el.searchRes.innerHTML =
-        `Menampilkan transkrip: <b>${esc(getNama(m))}</b> (${esc(getNim(m))})`;
-      window.__htShowDetail(riwayat.id_registrasi_mahasiswa);
-      return;
-    }
-
-    el.searchRes.innerHTML = `
-      <div class="text-sm mb-1">Ditemukan ${withRegId.length} mahasiswa:</div>
-      <div class="space-y-1 max-h-40 overflow-auto">
-        ${withRegId.map(({ m, riwayat }) => `
-          <button class="block w-full text-left px-3 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
-                  onclick="window.__htShowDetail('${esc(riwayat.id_registrasi_mahasiswa)}')">
-            <span class="font-mono text-xs">${esc(getNim(m) || '-')}</span>
-            · ${esc(getNama(m) || '-')}
-            <span class="text-xs text-gray-500">
-              (${esc(getProdi(m) || '')} · ${esc(labelPeriode(riwayat.id_periode_masuk))})
-            </span>
-          </button>
-        `).join('')}
-      </div>`;
   }
 
-  /* ---------------- 6) Hitung Angkatan ---------------- */
-  async function handleHitungAngkatan() {
-    if (!state.angkatan) { setStatus('Pilih angkatan dulu', true); return; }
 
-    const mhs = getMahasiswaAngkatan(state.angkatan);
-    if (!mhs.length) {
-        setStatus(
-        `Tidak ada mahasiswa angkatan ${state.angkatan}` +
-        (state.prodiId ? ` di ${prodiLabel()}` : ''),
-        true
-        );
-        return;
-    }
-
-    const byProdi = new Map();
-    for (const m of mhs) {
-        const prodiId = m.id_prodi_entry || m.id_prodi;
-        if (!prodiId) continue;
-        if (!byProdi.has(prodiId)) byProdi.set(prodiId, []);
-        byProdi.get(prodiId).push(m);
-    }
-    if (!byProdi.size) {
-        setStatus('id_prodi tidak terdeteksi. Cek data riwayat pendidikan.', true);
-        return;
-    }
-
-    const prodiList = [...byProdi.entries()];
-    const totalProdi = prodiList.length;
-
-    if (!confirm(
-        `Hitung transkrip angkatan ${state.angkatan} untuk ${totalProdi} prodi ` +
-        `(${mhs.length} mahasiswa)?\n\n` +
-        prodiList.map(([pid, list], i) => {
-        const nama = list[0]?.nama_program_studi || pid.slice(0, 8);
-        return `${i + 1}. ${nama} — ${list.length} mhs`;
-        }).join('\n')
-    )) return;
-
-    el.btnHitung.disabled = true;
-    el.btnHitung.textContent = '⏳ Memproses…';
-
-    // ✅ Log awal
-    logger.log('info', `Mulai hitung transkrip angkatan ${state.angkatan}`, {
-        angkatan:       state.angkatan,
-        totalProdi,
-        totalMahasiswa: mhs.length,
-        prodiList:      prodiList.map(([pid, list]) => ({
-        id:   pid,
-        nama: list[0]?.nama_program_studi || pid.slice(0, 8),
-        mhs:  list.length,
-        })),
+  /* ---------------- 4) Load transkrip ---------------- */
+async function loadTranskrip(regId) {
+  setStatus('Memuat transkrip…');
+  try {
+    const nim = state.selected?.m?.nim || '';
+    const result = await api.getAllRawNilaiMahasiswa(regId, {
+      nim,
+      force: true,
+      includeKonversi: true,
     });
+    const idPeriodeMasuk = state.selected?.riwayat?.id_periode_masuk || '';
 
-    let ok = 0, fail = 0;
-    const errors = [];
+    const normalized = result.records.map(r =>
+      normalizeRawRecord(r, regId, idPeriodeMasuk)
+    );
 
-    for (let i = 0; i < prodiList.length; i++) {
-        const [idProdi, students] = prodiList[i];
-        const namaProdi = students[0]?.nama_program_studi || idProdi.slice(0, 8);
-        const prefix    = totalProdi > 1
-        ? `(${i + 1} dari ${totalProdi}) `
-        : '';
-
-        // ✅ Progress di UI
-        setStatus(
-        `${prefix}Hitung transkrip: ${namaProdi} (${students.length} mhs)…`
-        );
-
-        // ✅ Log per prodi
-        logger.log('info', `${prefix}Hitung transkrip prodi: ${namaProdi}`, {
-        angkatan:   state.angkatan,
-        id_prodi:   idProdi,
-        nama_prodi: namaProdi,
-        mhs_count:  students.length,
-        step:       `${i + 1}/${totalProdi}`,
-        });
-
-        const t0 = performance.now();
-        try {
-        await api.hitungTranskripAngkatan({
-            angkatan: state.angkatan,
-            id_prodi: idProdi,
-        });
-        ok++;
-        const dur = Math.round((performance.now() - t0) / 1000);
-
-        // ✅ Log sukses
-        logger.log('success', `${prefix}Sukses: ${namaProdi}`, {
-            angkatan:   state.angkatan,
-            id_prodi:   idProdi,
-            nama_prodi: namaProdi,
-            mhs_count:  students.length,
-            durasi_detik: dur,
-        });
-        } catch (e) {
-        fail++;
-        errors.push(`${namaProdi}: ${e.message}`);
-        const dur = Math.round((performance.now() - t0) / 1000);
-
-        // ✅ Log gagal
-        logger.log('error', `${prefix}Gagal: ${namaProdi} — ${e.message}`, {
-            angkatan:   state.angkatan,
-            id_prodi:   idProdi,
-            nama_prodi: namaProdi,
-            mhs_count:  students.length,
-            durasi_detik: dur,
-            is_timeout:   e.isTimeout === true,
-        });
-
-        console.warn(`[HitungTranskrip] ${namaProdi} gagal:`, e.message);
-        }
+    for (const r of normalized) {
+      if (!r.id_matkul && r.kode_mata_kuliah) {
+        const mk = await lookupEngine.lookupMataKuliah(r.kode_mata_kuliah);
+        if (mk) r.id_matkul = mk._raw?.id_matkul || mk.id_matkul || '';
+      }
     }
 
-    // ✅ Log ringkasan
+    const valid = normalized.filter(r => r.id_matkul);
+    const skipped = normalized.length - valid.length;
+    if (skipped > 0) {
+      console.warn(`[Transkrip] ${skipped} record tanpa id_matkul dibuang`);
+    }
+
+    console.log(`[Transkrip] sumber=${result.source}, raw=${valid.length}`);
+    if (DEBUG_API) {
+      // Distribusi per MK
+      const byMk = new Map();
+      for (const r of valid) {
+        const k = r.kode_mata_kuliah || r.id_matkul;
+        byMk.set(k, (byMk.get(k) || 0) + 1);
+      }
+      const dobel = [...byMk.entries()].filter(([, n]) => n > 1);
+      console.log(`[Transkrip] ${byMk.size} MK unik, ${dobel.length} MK dobel:`,
+        dobel.map(([k, n]) => `${k}(${n}×)`).join(', '));
+    }
+
+    state.verified = verifikasiTranskrip(valid);
+    state.selectedMkIds.clear();
+    renderHasil(state.verified);
+
+    const v = state.verified;
+    const msg = v.isClean
+      ? `✅ ${valid.length} record · ${v.stats.uniqueMk} MK unik · semua tunggal`
+      : `⚠ ${valid.length} record · ${v.stats.uniqueMk} MK unik · ${v.dupCount} MK dobel`;
+    setStatus(msg, !v.isClean);
+
     logger.log(
-        fail === 0 ? 'success' : 'warning',
-        `Hitung transkrip selesai: ${ok} sukses, ${fail} gagal`,
-        {
-        angkatan: state.angkatan,
-        ok, fail,
-        errors: errors.slice(0, 10),
-        }
+      v.isClean ? 'success' : 'warning',
+      `Transkrip dimuat: ${state.selected.m.nama_mahasiswa}`,
+      {
+        nim: state.selected.m.nim,
+        regId,
+        source: result.source,
+        raw_count: valid.length,
+        unique_mk: v.stats.uniqueMk,
+        dup_count: v.dupCount,
+        same_id_dup: v.stats.sameIdDup,
+        diff_id_dup: v.stats.diffIdDup,
+      }
     );
+  } catch (e) {
+    console.error(e);
+    el.tbody.innerHTML = `<tr><td colspan="8" class="text-center py-6 text-red-500">
+      Gagal memuat transkrip: ${esc(e.message)}
+    </td></tr>`;
+    setStatus('Gagal: ' + e.message, true);
+    logger.log('error', `Gagal memuat transkrip: ${e.message}`, { regId });
+  }
+}
 
-    setStatus(
-        `✅ ${ok} prodi sukses, ${fail} gagal. ` +
-        (fail === 0 ? 'Memuat ulang…' : 'Lihat console untuk detail.')
-    );
+  /* ---------------- 5) Render hasil ---------------- */
+function renderHasil(v) {
+  const sum = v.summary, rawSum = v.rawSummary;
 
-    if (fail === 0) {
-        await loadTranskripAngkatan();
+  el.summary.innerHTML = `
+    <div class="stat-card p-3">
+      <div class="text-xs text-gray-500">Record (raw → MK unik)</div>
+      <div class="text-xl font-bold">
+        ${v.raw.length} → ${v.best.length}
+        ${v.dupCount > 0
+          ? `<span class="text-xs font-normal text-orange-600 ml-1">(${v.dupCount} dobel)</span>`
+          : `<span class="text-xs font-normal text-green-600 ml-1">(semua unik)</span>`}
+      </div>
+    </div>
+    <div class="stat-card p-3">
+      <div class="text-xs text-gray-500">SKS (hasil hitung)</div>
+      <div class="text-xl font-bold">${sum.totalSKS}</div>
+    </div>
+    <div class="stat-card p-3">
+      <div class="text-xs text-gray-500">IPK</div>
+      <div class="text-xl font-bold text-indigo-600">
+        ${fmt(sum.ipk)}
+        ${rawSum.ipk !== sum.ipk
+          ? `<span class="text-xs text-gray-400 line-through ml-1">${fmt(rawSum.ipk)}</span>`
+          : ''}
+      </div>
+    </div>
+    <div class="stat-card p-3">
+      <div class="text-xs text-gray-500">Status</div>
+      <div class="mt-1">
+        ${v.isClean
+          ? `<span class="px-2 py-0.5 bg-green-100 text-green-700 rounded-full text-xs">✓ Sesuai</span>`
+          : `<span class="px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full text-xs">${v.dupCount} MK dobel</span>`}
+      </div>
+    </div>`;
+
+  if (v.raw.length === 0) {
+    el.tbody.innerHTML = `<tr><td colspan="8" class="text-center py-6 text-gray-400">
+      Tidak ada transkrip.
+    </td></tr>`;
+    el.btnApply.disabled = true;
+    return;
+  }
+
+  // === Banner info di atas tabel (BUKAN pengganti baris) ===
+  let banner = '';
+  if (v.dupCount === 0) {
+    banner = `
+      <tr class="bg-green-50 dark:bg-green-900/20">
+        <td colspan="8" class="text-center py-3 text-green-700 text-sm">
+          ✓ Tidak ada MK dobel — ${v.raw.length} record / ${v.stats.uniqueMk} MK unik.
+          <div class="text-xs text-gray-500 mt-1">
+            Pengecekan dilakukan pada kombinasi <b>kode + nama MK</b>.
+            Kalau kamu yakin ada retake, klik 🔍 Debug JSON untuk lihat raw.
+          </div>
+        </td>
+      </tr>`;
+  } else {
+    banner = `
+      <tr class="bg-orange-50 dark:bg-orange-900/20">
+        <td colspan="8" class="text-center py-2 text-orange-700 text-sm">
+          ⚠ Ditemukan <b>${v.dupCount} MK dobel</b> — centang MK yang ingin diproses
+          ${v.stats.diffIdDup > 0
+            ? `<br><span class="text-xs">(${v.stats.diffIdDup} karena perubahan kurikulum — id_matkul berbeda)</span>`
+            : ''}
+        </td>
+      </tr>`;
+  }
+
+  // === Render SEMUA baris ===
+  const rowsHtml = v.detail.map(d => {
+    const checkbox = d.isDup
+      ? `<input type="checkbox" class="ht-mk-check"
+               data-matkul-id="${esc(d.id_matkul)}"
+               title="Centang untuk proses MK ini">`
+      : `<input type="checkbox" checked disabled title="Sudah sesuai (1 attempt)">`;
+
+    const best = d.bestRecord;
+    const srcMap = {
+      'kelas':     '<span class="text-blue-600">Kelas</span>',
+      'transfer':  '<span class="text-purple-600">Transfer</span>',
+      'konversi':  '<span class="text-teal-600">Konversi</span>',
+      'riwayat':   '<span class="text-gray-500">Riwayat</span>',
+      '?':         '<span class="text-red-500">Tidak ada</span>',
+    };
+    const srcLabel = srcMap[best?._source || '?'] || srcMap['?'];
+
+    let catatan;
+    if (d.isDup) {
+      catatan = `<span class="text-orange-600 font-semibold">⚠ ${d.count}× → ${esc(d.bestHuruf)}</span>`;
+      if (d.isCrossIdMatkul) {
+        catatan += `<br><span class="text-xs text-red-500">⚠ id_matkul berbeda</span>`;
+      }
+      if (d.emptyAttempts > 0) {
+        catatan += `<br><span class="text-xs text-yellow-600">${d.emptyAttempts} attempt kosong</span>`;
+      }
     } else {
-        alert(
-        `Hitung selesai: ${ok} sukses, ${fail} gagal.\n\n` +
-        errors.slice(0, 5).join('\n')
-        );
+      catatan = `<span class="text-green-600">✓ OK</span>`;
     }
 
-    el.btnHitung.disabled = false;
-    el.btnHitung.textContent = '▶ Hitung Transkrip Angkatan';
+    const tooltipAttempts = d.attemptsDetail
+      ? d.attemptsDetail
+          .map(a => `${a.huruf} @smt${a.smt} (${a.sumber}, id:${a.idMatkul?.slice(0,8)})`)
+          .join('\n')
+      : '';
+
+    return `
+      <tr class="border-b border-gray-100 dark:border-gray-700 ${d.isDup ? 'bg-orange-50 dark:bg-orange-900/20' : ''}">
+        <td class="px-2 py-2 text-center">${checkbox}</td>
+        <td class="px-2 py-2 font-mono text-xs">${esc(d.kode_mata_kuliah)}</td>
+        <td class="px-2 py-2">${esc(d.nama_mata_kuliah)}</td>
+        <td class="px-2 py-2 text-right">${d.sks_mata_kuliah}</td>
+        <td class="px-2 py-2 text-center text-xs font-mono" title="${esc(tooltipAttempts)}">
+          ${esc(d.attempts.join(' → ')) || '-'}
+        </td>
+        <td class="px-2 py-2 text-center font-bold">${esc(d.bestHuruf)}</td>
+        <td class="px-2 py-2 text-center text-xs">${srcLabel}</td>
+        <td class="px-2 py-2 text-center text-xs">${catatan}</td>
+      </tr>`;
+  }).join('');
+
+  el.tbody.innerHTML = banner + rowsHtml;
+
+  // Bind checkbox untuk MK dobel
+  el.tbody.querySelectorAll('input.ht-mk-check').forEach(cb => {
+    cb.addEventListener('change', () => {
+      const idMatkul = cb.getAttribute('data-matkul-id');
+      if (cb.checked) state.selectedMkIds.add(idMatkul);
+      else            state.selectedMkIds.delete(idMatkul);
+      updateApplyButton();
+    });
+  });
+
+  updateApplyButton();
+}
+
+  /** Tombol Apply hanya aktif kalau ada MK yang dicentang. */
+  function updateApplyButton() {
+    const count = state.selectedMkIds.size;
+    el.btnApply.disabled = count === 0;
+    el.btnApply.textContent = count > 0
+      ? `✓ Terapkan (${count} MK)`
+      : '✓ Terapkan Hasil Hitung';
+  }
+
+  /* ---------------- 6) Backup ---------------- */
+  function downloadBackup(records, filename) {
+    const blob = new Blob([JSON.stringify(records, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  function handleBackup() {
+    if (!state.selected || !state.verified) {
+      alert('Pilih mahasiswa dulu.');
+      return;
     }
+    const m = state.selected.m;
+    downloadBackup(
+      state.verified.raw,
+      `backup-transkrip-${m.nim || m.id_mahasiswa}-${new Date().toISOString().slice(0, 10)}.json`
+    );
+    logger.log('info', `Backup transkrip diunduh: ${m.nim}`, { count: state.verified.raw.length });
+  }
+
+  function handleDebug() {
+    if (!state.selected || !state.verified) {
+      alert('Pilih mahasiswa dulu.');
+      return;
+    }
+    const v = state.verified;
+    const m = state.selected.m;
+
+    // Info ringkas
+    const lines = [];
+    lines.push(`Mahasiswa : ${m.nama_mahasiswa} (${m.nim})`);
+    lines.push(`regId     : ${state.selected.regId}`);
+    lines.push(`Raw count : ${v.raw.length}`);
+    lines.push(`MK unik   : ${v.stats.uniqueMk}`);
+    lines.push(`MK dobel  : ${v.stats.dupMk}`);
+    lines.push('');
+    lines.push('--- Record per MK (top 30) ---');
+
+    const byMk = new Map();
+    for (const r of v.raw) {
+      const key = r.id_matkul || r.kode_mata_kuliah || '(tanpa id)';
+      if (!byMk.has(key)) byMk.set(key, []);
+      byMk.get(key).push(r);
+    }
+    for (const [key, arr] of [...byMk.entries()].slice(0, 30)) {
+      const kode = arr[0]?.kode_mata_kuliah || key.slice(0, 8);
+      lines.push(
+        `${kode}: ${arr.length}× ` +
+        arr.map(r => `${hurufLabel(r.nilai_huruf)}@${r.smt_diambil || '?'}`).join(', ')
+      );
+    }
+
+    const summaryText = lines.join('\n');
+    console.log(summaryText);
+
+    // Salin seluruh raw JSON ke clipboard
+    try {
+      navigator.clipboard.writeText(JSON.stringify(v.raw, null, 2));
+      alert(
+        `Debug info tersalin ke clipboard!\n\n` +
+        summaryText.substring(0, 500) +
+        '\n\n(JSON lengkap juga tersalin — paste ke text editor untuk cek)'
+      );
+    } catch {
+      // Fallback: tampilkan di console
+      console.log('RAW JSON:', v.raw);
+      alert(
+        `Debug info (lihat console untuk JSON lengkap)\n\n` +
+        summaryText.substring(0, 500)
+      );
+    }
+
+  }
+
+  /* ---------------- 7) Terapkan: delete-all + insert best ---------------- */
+async function handleApply() {
+  if (!state.selected || !state.verified) return;
+  const v = state.verified;
+  if (!state.selectedMkIds.size) { alert('Belum ada MK yang dicentang.'); return; }
+
+  const { m, regId, riwayat } = state.selected;
+  const dupMks = v.detail.filter(d => d.isDup && state.selectedMkIds.has(d.id_matkul));
+  if (!dupMks.length) { alert('Tidak ada MK berulang yang dipilih.'); return; }
+
+  // Pra-validasi insert
+  const plans = [];
+  const preErrors = [];
+  for (const d of dupMks) {
+    const plan = buildInsertRecord(d.bestRecord, regId, riwayat?.id_periode_masuk);
+    if (!plan.ok) {
+      preErrors.push(`${d.kode_mata_kuliah} — ${plan.error}`);
+    } else {
+      plans.push({ mk: d, record: plan.record });
+    }
+  }
+  if (preErrors.length) {
+    alert(`Tidak bisa diproses:\n\n${preErrors.join('\n')}`);
+    logger.log('error', `Apply ditolak: ${preErrors.length} MK tak bisa di-insert`, {
+      nim: m.nim, errors: preErrors,
+    });
+    return;
+  }
+
+  const detailText = plans.map(p =>
+    `• ${p.mk.kode_mata_kuliah}: ${p.mk.attempts.join(' → ')} → ${p.mk.bestHuruf}`
+  ).join('\n');
+
+  if (!confirm(
+    `Proses ${plans.length} MK untuk ${m.nama_mahasiswa} (${m.nim})?\n\n` +
+    detailText + '\n\n' +
+    `IPK: ${fmt(v.rawSummary.ipk)} → ${fmt(v.summary.ipk)}\n\n` +
+    `Transkrip final per MK akan ditimpa dengan nilai tertinggi.\n\n` +
+    `Lanjutkan? (backup otomatis diunduh)`
+  )) return;
+
+  // downloadBackup(v.raw, `backup-transkrip-${m.nim || m.id_mahasiswa}-${Date.now()}.json`);
+
+  el.btnApply.disabled = true;
+  el.btnApply.textContent = '⏳ Menerapkan…';
+
+  logger.log('info', `Mulai terapkan transkrip: ${m.nama_mahasiswa}`, {
+    nim: m.nim, regId,
+    total_mk: plans.length,
+    same_id_dup: v.stats.sameIdDup,
+    cross_id_dup: v.stats.diffIdDup,
+  });
+
+  let ok = 0, fail = 0;
+  const errors = [];
+
+  for (let i = 0; i < plans.length; i++) {
+    const { mk, record } = plans[i];
+    const prefix = `(${i + 1}/${plans.length})`;
+    setStatus(`${prefix} ${mk.kode_mata_kuliah} — ${mk.attempts.join('/')} → ${mk.bestHuruf}…`);
+
+    // 1) Hapus transkrip final untuk SEMUA id_matkul dalam grup
+    //    (mendukung kasus kurikulum berubah)
+    // for (const idMk of mk.allIdMatkul) {
+    //   try {
+    //     await api.deleteTranskripMahasiswa({
+    //       id_registrasi_mahasiswa: regId,
+    //       id_matkul:               idMk,
+    //     });
+    //   } catch (e) {
+    //     // Kalau delete gagal karena record tidak ada, lanjut saja
+    //     if (DEBUG_API) console.warn(`delete ${idMk}: ${e.message}`);
+    //     logger.log('warning', `${mk.kode_mata_kuliah} delete ${idMk.slice(0, 8)}: ${e.message}`);
+    //   }
+    // }
+
+    // 2) Insert transkrip baru dengan nilai terbaik
+    try {
+      await api.insertTranskripMahasiswa(record);
+      ok++;
+      logger.log('success', `${mk.kode_mata_kuliah} OK: ${mk.attempts.join('/')} → ${mk.bestHuruf}`, {
+        nim: m.nim, id_matkul: record.id_matkul, record,
+      });
+    } catch (e) {
+        fail++;
+        errors.push(`${mk.kode_mata_kuliah} [insert]: ${e.message}`);
+        logger.log('error', `${mk.kode_mata_kuliah} insert gagal: ${e.message}`, {
+          nim: m.nim,
+          record,
+          error: e.message,
+        });
+
+        if (DEBUG_API) {
+          console.error(`[Apply] ${mk.kode_mata_kuliah} gagal insert:`, {
+            error: e.message,
+            record: record,
+          });
+        }
+    }
+  }
+
+  logger.log(
+    fail === 0 ? 'success' : 'warning',
+    `Selesai: ${ok} sukses, ${fail} gagal`,
+    { nim: m.nim, ok, fail, errors: errors.slice(0, 10) }
+  );
+
+  setStatus(`✅ ${ok} sukses, ${fail} gagal. Memuat ulang…`);
+  state.selectedMkIds.clear();
+  await loadTranskrip(regId);
+
+  if (fail > 0) {
+    alert(`Selesai: ${ok} sukses, ${fail} gagal.\n\n${errors.slice(0, 5).join('\n')}`);
+  }
+}
 
   /* ---------------- Bindings ---------------- */
-  el.angkatan.addEventListener('change', (e) => {
-    state.angkatan = e.target.value;
-    el.angLabel.textContent = state.angkatan
-      ? `(angkatan ${state.angkatan} · ${prodiLabel()})`
-      : '—';
-  });
-
-  el.prodi.addEventListener('change', (e) => {
-    state.prodiId = e.target.value;
-    el.angLabel.textContent = state.angkatan
-      ? `(angkatan ${state.angkatan} · ${prodiLabel()})`
-      : '—';
-
-    // Jika data sudah ter-load, re-render tabel dari cache (tanpa re-fetch)
-    if (state.angkatan && state.perStudent.size > 0) {
-      renderTable(getMahasiswaAngkatan(state.angkatan));
-    }
-  });
-
-  el.btnLoad.addEventListener('click', loadTranskripAngkatan);
-  el.btnHitung.addEventListener('click', handleHitungAngkatan);
   el.btnCari.addEventListener('click', handleSearch);
   el.search.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') handleSearch();
   });
+  el.btnRefresh.addEventListener('click', () => {
+    if (state.selected) loadTranskrip(state.selected.regId);
+  });
+  el.btnBackup.addEventListener('click', handleBackup);
+  el.btnApply.addEventListener('click', handleApply);
+
+  el.btnDebug.addEventListener('click', handleDebug);
 
   /* ---------------- Start ---------------- */
   await loadAllMahasiswa();

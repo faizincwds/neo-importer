@@ -1,4 +1,4 @@
-export const DEBUG_API = true; // true untuk menampilkan log API di console
+export const DEBUG_API = false; // true untuk menampilkan log API di console
 export const API_BASE = localStorage.getItem('nf_api_url') || 'http://localhost:3003';
 export const API_TYPE = localStorage.getItem('nf_api_type') || 'live2.php';
 
@@ -54,6 +54,7 @@ export const CACHE_TTL = {
   semester_list_before: 30 * 60 * 1000,
   count_mhs_status: 5 * 60 * 1000,
   count_mhs_lulusdo: 5 * 60 * 1000,
+  mahasiswalulusdo: 5 * 60 * 1000,   // 5 menit
 };
 
 

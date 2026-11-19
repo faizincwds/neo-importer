@@ -1,6 +1,7 @@
 import { NeoFeederAPI } from './api.js';
 import { STORAGE_KEYS, DEBUG_API } from './config.js';
 import { Logger } from './logger.js';
+import { escHtml } from './utils.js';
 
 export async function renderDashboard(container) {
   const api = new NeoFeederAPI();
@@ -38,14 +39,14 @@ export async function renderDashboard(container) {
   });
 
   // Field khusus data keluar / alumni
-  const KELUAR_FIELDS = ['no_seri_ijazah', 'sk_yudisium', 'tgl_sk_yudisium', 'id_periode_keluar'];
+  const KELUAR_FIELDS = ['nomor_ijazah', 'nomor_sk_yudisium', 'tanggal_sk_yudisium', 'tanggal_keluar'];
 
   const toRowKeluar = (m) => ({
     ...toRow(m),
-    no_seri_ijazah:   m.no_seri_ijazah   ?? '',
-    sk_yudisium:      m.sk_yudisium      ?? '',
-    tgl_sk_yudisium:  m.tgl_sk_yudisium  ?? '',
-    id_periode_keluar:m.id_periode_keluar?? '',
+    nomor_ijazah:   m.nomor_ijazah   ?? '',
+    nomor_sk_yudisium:      m.nomor_sk_yudisium      ?? '',
+    tanggal_sk_yudisium:  m.tanggal_sk_yudisium  ?? '',
+    tanggal_keluar: m.tanggal_keluar ?? '',
   });
 
   // Hanya tampilkan kolom ekstra jika ada minimal 1 nilai non-empty
@@ -74,7 +75,7 @@ export async function renderDashboard(container) {
       <th class="text-left px-3 py-2 font-semibold">No. Seri Ijazah</th>
       <th class="text-left px-3 py-2 font-semibold">SK Yudisium</th>
       <th class="text-left px-3 py-2 font-semibold">Tgl SK Yudisium</th>
-      <th class="text-left px-3 py-2 font-semibold">Periode Keluar</th>
+      <th class="text-left px-3 py-2 font-semibold">Tgl Keluar</th>
     `;
 
     if (theadRow) {
@@ -92,16 +93,16 @@ export async function renderDashboard(container) {
     tbody.innerHTML = data.map((m, i) => {
       const baseCells = `
         <td class="px-3 py-2 text-gray-100">${i + 1}</td>
-        <td class="px-3 py-2 font-mono">${m.nim || '-'}</td>
-        <td class="px-3 py-2">${m.nama || '-'}</td>
-        <td class="px-3 py-2">${m.angkatan || '-'}</td>
-        <td class="px-3 py-2 text-xs">${m.prodi || '-'}</td>
+        <td class="px-3 py-2 font-mono">${escHtml(m.nim || '-')}</td>
+        <td class="px-3 py-2">${escHtml(m.nama || '-')}</td>
+        <td class="px-3 py-2">${escHtml(m.angkatan || '-')}</td>
+        <td class="px-3 py-2 text-xs">${escHtml(m.prodi || '-')}</td>
       `;
       const extraCells = _modalShowKeluarFields ? `
-        <td class="px-3 py-2 font-mono text-xs">${m.no_seri_ijazah || '-'}</td>
-        <td class="px-3 py-2 font-mono text-xs">${m.sk_yudisium || '-'}</td>
-        <td class="px-3 py-2 text-xs">${m.tgl_sk_yudisium || '-'}</td>
-        <td class="px-3 py-2 text-xs">${m.id_periode_keluar || '-'}</td>
+        <td class="px-3 py-2 font-mono text-xs">${escHtml(m.nomor_ijazah || '-')}</td>
+        <td class="px-3 py-2 font-mono text-xs">${escHtml(m.nomor_sk_yudisium || '-')}</td>
+        <td class="px-3 py-2 text-xs">${escHtml(m.tanggal_sk_yudisium || '-')}</td>
+        <td class="px-3 py-2 text-xs">${escHtml(m.tanggal_keluar || '-')}</td>
       ` : '';
       return `
         <tr class="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:text-gray-100 dark:hover:bg-gray-900">
@@ -160,25 +161,23 @@ export async function renderDashboard(container) {
     }
 
     const baseHeaders = ['No', 'NIM', 'Nama', 'Angkatan', 'Prodi'];
-    const extraHeaders = ['No. Seri Ijazah', 'SK Yudisium', 'Tgl SK Yudisium', 'Periode Keluar'];
+    const extraHeaders = ['No. Seri Ijazah', 'SK Yudisium', 'Tgl SK Yudisium', 'Tgl Keluar'];
     const headers = _modalShowKeluarFields ? [...baseHeaders, ...extraHeaders] : baseHeaders;
-
-    const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
 
     const rows = _modalData.map((m, i) => {
       const base = [
         i + 1,
-        esc(m.nim),
-        esc(m.nama),
-        esc(m.angkatan),
-        esc(m.prodi),
+        escHtml(m.nim),
+        escHtml(m.nama),
+        escHtml(m.angkatan),
+        escHtml(m.prodi),
       ];
       if (_modalShowKeluarFields) {
         base.push(
-          esc(m.no_seri_ijazah),
-          esc(m.sk_yudisium),
-          esc(m.tgl_sk_yudisium),
-          esc(m.id_periode_keluar),
+          escHtml(m.nomor_ijazah),
+          escHtml(m.nomor_sk_yudisium),
+          escHtml(m.tanggal_sk_yudisium),
+          escHtml(m.tanggal_keluar),
         );
       }
       return base;
@@ -548,7 +547,7 @@ export async function renderDashboard(container) {
             <div class="stat-card p-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition"
                  onclick="window.__showStatusList('${semesterKey}', '${id}')"
                  title="Klik untuk lihat daftar">
-              <div class="text-xs font-medium dark:text-gray-400">${s.nama_status_mahasiswa}</div>
+              <div class="text-xs font-medium dark:text-gray-400">${escHtml(s.nama_status_mahasiswa)}</div>
               <div class="text-xl font-bold mt-1">${count.toLocaleString('id-ID')}</div>
             </div>
           `;

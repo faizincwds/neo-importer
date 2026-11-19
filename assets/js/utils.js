@@ -9,6 +9,16 @@ export function normalizeString(str) {
     .replace(/[^a-z0-9]/g, '');
 }
 
+export function escHtml(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+
 // Sanitasi untuk nilai yang akan dimasukkan ke query SQL string.
 // Mengganti apostrof lurus dengan melengkung untuk menghindari
 // SQL injection sederhana di filter Neo Feeder.
